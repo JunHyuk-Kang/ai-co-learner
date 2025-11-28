@@ -1,0 +1,67 @@
+import React, { useState } from 'react';
+import { Message } from '../../types';
+import { Bot, User, BrainCircuit, ChevronDown, ChevronUp } from 'lucide-react';
+
+interface ChatBubbleProps {
+  message: Message;
+  agentName: string;
+}
+
+export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, agentName }) => {
+  const [isThinkingOpen, setIsThinkingOpen] = useState(false);
+  const isAI = message.sender === 'ai';
+
+  return (
+    <div className={`flex w-full mb-6 ${isAI ? 'justify-start' : 'justify-end'}`}>
+      <div className={`flex max-w-[80%] ${isAI ? 'flex-row' : 'flex-row-reverse'}`}>
+        
+        {/* Avatar */}
+        <div className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center mt-1 ${isAI ? 'bg-surface border border-primary/30 text-primary mr-3' : 'bg-gray-700 text-gray-300 ml-3'}`}>
+          {isAI ? <Bot size={16} /> : <User size={16} />}
+        </div>
+
+        <div className="flex flex-col">
+            {/* Name Label */}
+            <span className={`text-xs text-gray-500 mb-1 ${isAI ? 'text-left' : 'text-right'}`}>
+                {isAI ? agentName : '나'}
+            </span>
+
+            {/* Thinking Process Accordion (Only for AI) */}
+            {isAI && message.thinkingProcess && (
+            <div className="mb-2">
+                <button 
+                onClick={() => setIsThinkingOpen(!isThinkingOpen)}
+                className="flex items-center gap-2 text-xs font-medium text-primary hover:text-primary-hover transition-colors bg-primary/10 px-3 py-1.5 rounded-full"
+                >
+                <BrainCircuit size={14} />
+                생각하는 과정 표시
+                {isThinkingOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+                
+                {isThinkingOpen && (
+                <div className="mt-2 p-3 bg-[#1A1A1A] border border-primary/20 rounded-lg text-xs text-gray-400 whitespace-pre-line animate-in fade-in slide-in-from-top-2">
+                    <div className="font-bold text-primary mb-1">Agent Logic Trace:</div>
+                    {message.thinkingProcess}
+                </div>
+                )}
+            </div>
+            )}
+
+            {/* Message Content */}
+            <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+            isAI 
+                ? 'bg-surface border border-border text-gray-200 rounded-tl-none' 
+                : 'bg-primary text-white rounded-tr-none'
+            }`}>
+            {message.text}
+            </div>
+            
+            {/* Timestamp */}
+            <span className={`text-[10px] text-gray-600 mt-1 ${isAI ? 'text-left' : 'text-right'}`}>
+                {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+        </div>
+      </div>
+    </div>
+  );
+};

@@ -1,0 +1,5 @@
+{
+  "name": "AI Co-Learner",
+  "description": "A constraint-based educational AI platform featuring persona agents with thinking process visualization, dashboard analytics, and admin controls.",
+  "requestFramePermissions": []
+}

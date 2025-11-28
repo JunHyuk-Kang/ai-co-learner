@@ -1,0 +1,12 @@
+{
+  "name": "ai-co-learner-chat-api",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Chat API Lambda function for AI Co-Learner",
+  "main": "index.mjs",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.720.0",
+    "@aws-sdk/client-dynamodb": "^3.720.0",
+    "@aws-sdk/lib-dynamodb": "^3.720.0"
+  }
+}

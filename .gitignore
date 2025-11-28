@@ -1,0 +1,45 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Environment variables
+.env.local
+.env
+
+# Lambda deployment files
+lambda/**/*.zip
+*.zip
+
+# Test and debug files
+batch-response*.json
+nul
+
+# AWS and sensitive files
+lambda-permissions-policy.json
+lambda-trust-policy.json
+bucket-policy.json
+mock-integration.json
+
+# PowerShell scripts (setup completed)
+*.ps1
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
