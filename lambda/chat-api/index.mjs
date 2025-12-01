@@ -17,25 +17,29 @@ const USER_BOTS_TABLE = "ai-co-learner-user-bots";
 // Claude 3 Haiku - 빠르고 저렴하며 한국어 성능 우수
 const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
 
+// CORS headers defined at top level
+const CORS_HEADERS = {
+  "Content-Type": "application/json",
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
+};
+
 export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
-  const headers = {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
-  };
+  // Always handle OPTIONS first for CORS preflight
+  if (event.httpMethod === 'OPTIONS' || event.requestContext?.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ message: 'OK' })
+    };
+  }
+
+  const headers = CORS_HEADERS;
 
   try {
-    // OPTIONS 요청 처리 (CORS preflight)
-    if (event.httpMethod === 'OPTIONS') {
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ message: 'OK' })
-      };
-    }
 
     // 라우팅 처리
     const path = event.path || event.resource;
@@ -61,32 +65,7 @@ export const handler = async (event) => {
       return await createUserBot(event, headers);
     }
 
-    // GET /users/{userId}/competencies - 사용자 역량 조회
-    if (method === 'GET' && path.includes('/users/') && path.includes('/competencies')) {
-      return await getUserCompetencies(event, headers);
-    }
-
-    // GET /users/{userId} - 사용자 프로필 조회
-    if (method === 'GET' && path.includes('/users/')) {
-      return await getUserProfile(event, headers);
-    }
-
-    // POST /users - 사용자 프로필 생성
-    if (method === 'POST' && path.includes('/users') && !path.includes('/update')) {
-      return await createUserProfile(event, headers);
-    }
-
-    // POST /users/update - 사용자 프로필 업데이트
-    if (method === 'POST' && path.includes('/users/update')) {
-      return await updateUserProfile(event, headers);
-    }
-
-    // POST /chat - 채팅 메시지 전송 (기존 기능)
-    if (method === 'POST' && path.includes('/chat')) {
-      return await sendChatMessage(event, headers);
-    }
-
-    // Admin APIs
+    // Admin APIs (먼저 체크 - 더 구체적인 경로)
     if (method === 'POST' && path.includes('/admin/templates/create')) {
       return await createTemplate(event, headers);
     }
@@ -111,6 +90,31 @@ export const handler = async (event) => {
       return await blockUser(event, headers);
     }
 
+    // GET /users/{userId}/competencies - 사용자 역량 조회
+    if (method === 'GET' && path.includes('/users/') && path.includes('/competencies')) {
+      return await getUserCompetencies(event, headers);
+    }
+
+    // GET /users/{userId} - 사용자 프로필 조회
+    if (method === 'GET' && path.includes('/users/')) {
+      return await getUserProfile(event, headers);
+    }
+
+    // POST /users - 사용자 프로필 생성
+    if (method === 'POST' && path.includes('/users') && !path.includes('/update') && !path.includes('/admin')) {
+      return await createUserProfile(event, headers);
+    }
+
+    // POST /users/update - 사용자 프로필 업데이트
+    if (method === 'POST' && path.includes('/users/update') && !path.includes('/admin')) {
+      return await updateUserProfile(event, headers);
+    }
+
+    // POST /chat - 채팅 메시지 전송 (기존 기능)
+    if (method === 'POST' && path.includes('/chat')) {
+      return await sendChatMessage(event, headers);
+    }
+
     return {
       statusCode: 404,
       headers,
@@ -121,7 +125,7 @@ export const handler = async (event) => {
     console.error("Error:", error);
     return {
       statusCode: 500,
-      headers,
+      headers: CORS_HEADERS, // Always return CORS headers even on error
       body: JSON.stringify({
         error: error.message,
         type: error.name

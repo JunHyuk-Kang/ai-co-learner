@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBots } from '../../contexts/BotContext';
 import { Role, UserBot } from '../../types';
 import { LayoutDashboard, MessageSquare, LogOut, Shield } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { BotService } from '../../services/awsBackend';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,17 +12,11 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { user, logout } = useAuth();
+  const { bots: myBots } = useBots();
   const location = useLocation();
   const navigate = useNavigate();
-  const [myBots, setMyBots] = useState<(UserBot & { templateName: string })[]>([]);
 
   const isActive = (path: string) => location.pathname === path;
-
-  useEffect(() => {
-    if (user) {
-      BotService.getUserBots(user.id).then(setMyBots);
-    }
-  }, [user]);
 
   const handleLogout = () => {
     logout();

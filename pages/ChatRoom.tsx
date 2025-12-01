@@ -5,13 +5,18 @@ import { ChatSession, Message } from '../types';
 import { ChatBubble } from '../components/chat/ChatBubble';
 import { Button } from '../components/ui/Button';
 import { Send, MoreHorizontal, AlertCircle } from 'lucide-react';
+import { useBots } from '../contexts/BotContext';
 
 export const ChatRoom: React.FC = () => {
   const { agentId } = useParams<{ agentId: string }>();
+  const { bots } = useBots();
   const [session, setSession] = useState<ChatSession | null>(null);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Find the current bot info
+  const currentBot = bots.find(bot => bot.id === agentId);
 
   useEffect(() => {
     if (agentId) {
@@ -74,8 +79,10 @@ export const ChatRoom: React.FC = () => {
       <header className="h-16 border-b border-border bg-background/95 backdrop-blur flex items-center justify-between px-6 z-10">
         <div>
             <div className="flex items-center gap-2">
-                <h2 className="font-bold text-white">나의 질문 코치</h2>
-                <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold">Lv.3</span>
+                <h2 className="font-bold text-white">{currentBot?.name || '로딩 중...'}</h2>
+                <span className="px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold">
+                  Lv.{currentBot?.currentLevel || 1}
+                </span>
             </div>
             <p className="text-xs text-green-400 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
@@ -99,10 +106,10 @@ export const ChatRoom: React.FC = () => {
             </div>
 
             {session.messages.map((msg) => (
-            <ChatBubble 
-                key={msg.id} 
-                message={msg} 
-                agentName="질문력 에이전트" 
+            <ChatBubble
+                key={msg.id}
+                message={msg}
+                agentName={currentBot?.templateName || currentBot?.name || 'AI'}
             />
             ))}
             

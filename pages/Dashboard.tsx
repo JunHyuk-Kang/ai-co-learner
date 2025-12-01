@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useBots } from '../contexts/BotContext';
 import { CompetencyRadar } from '../components/dashboard/CompetencyRadar';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { BotService } from '../services/awsBackend';
-import { UserBot, BotTemplate } from '../types';
+import { BotTemplate } from '../types';
 import { Link } from 'react-router-dom';
-import { MessageSquare, Plus, X, Rocket, Brain, Crown, Users } from 'lucide-react';
+import { MessageSquare, Plus, X, Rocket, Brain, Crown, Users, Trash2 } from 'lucide-react';
 
 // Mapping theme colors to Tailwind classes
 const colorMap: Record<string, string> = {
@@ -29,38 +30,47 @@ const bgMap: Record<string, string> = {
 
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
-  const [myBots, setMyBots] = useState<(UserBot & { templateName: string, themeColor?: string, description?: string })[]>([]);
+  const { bots: myBots, loadBots } = useBots();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
+
   const [templates, setTemplates] = useState<BotTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [newBotName, setNewBotName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      loadMyBots();
-    }
     BotService.getTemplates().then(setTemplates);
-  }, [user]);
-
-  const loadMyBots = () => {
-    if (user) {
-        BotService.getUserBots(user.id).then(setMyBots);
-    }
-  };
+  }, []);
 
   const handleCreateBot = async () => {
     if (!user || !selectedTemplateId || !newBotName) return;
     setIsCreating(true);
     try {
         await BotService.createUserBot(user.id, selectedTemplateId, newBotName);
-        loadMyBots();
+        await loadBots();
         setIsModalOpen(false);
         setNewBotName('');
         setSelectedTemplateId('');
     } finally {
         setIsCreating(false);
+    }
+  };
+
+  const handleDeleteBot = async (botId: string, botName: string) => {
+    if (!user) return;
+
+    const confirmed = window.confirm(
+      `"${botName}" 봇을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없으며, 모든 대화 내역이 함께 삭제됩니다.`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await BotService.deleteUserBot(user.id, botId);
+      await loadBots();
+    } catch (error) {
+      console.error('Failed to delete bot:', error);
+      alert('봇 삭제에 실패했습니다.');
     }
   };
 
@@ -181,9 +191,21 @@ export const Dashboard: React.FC = () => {
                                 <div className={`w-12 h-12 rounded-full ${bgColorClass} flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
                                     {bot.name.charAt(0)}
                                 </div>
-                                <span className="text-[10px] font-mono bg-[#121212] border border-[#333] px-2 py-1 rounded text-gray-400">
-                                    Lv.{bot.currentLevel}
-                                </span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-mono bg-[#121212] border border-[#333] px-2 py-1 rounded text-gray-400">
+                                        Lv.{bot.currentLevel}
+                                    </span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            handleDeleteBot(bot.id, bot.name);
+                                        }}
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-red-500/10 text-gray-500 hover:text-red-400"
+                                        title="봇 삭제"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
                             </div>
 
                             <div className="mb-4">

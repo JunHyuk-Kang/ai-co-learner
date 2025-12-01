@@ -194,6 +194,19 @@ export const BotService = {
       throw error;
     }
   },
+
+  deleteUserBot: async (userId: string, botId: string) => {
+    try {
+      const data = await apiPost('/bots/delete', {
+        userId,
+        botId,
+      });
+      return data;
+    } catch (error) {
+      console.error('Failed to delete user bot:', error);
+      throw error;
+    }
+  },
 };
 
 export const AdminService = {
