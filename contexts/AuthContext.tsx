@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { signUp, signIn, signOut, getCurrentUser, confirmSignUp, fetchUserAttributes } from 'aws-amplify/auth';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { signUp, signIn, signOut, getCurrentUser, confirmSignUp, fetchUserAttributes, fetchAuthSession } from 'aws-amplify/auth';
 import { User } from '../types';
 import { UserService } from '../services/awsBackend';
 
@@ -14,13 +14,84 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// 세션 만료 시간: 1시간 (밀리초)
+const SESSION_TIMEOUT = 60 * 60 * 1000;
+// 토큰 갱신 체크 간격: 5분 (밀리초)
+const TOKEN_CHECK_INTERVAL = 5 * 60 * 1000;
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const sessionCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 토큰 유효성 체크
+  const checkTokenValidity = async (): Promise<boolean> => {
+    try {
+      const session = await fetchAuthSession();
+      const tokens = session.tokens;
+
+      if (!tokens) {
+        console.log('No tokens found');
+        return false;
+      }
+
+      // 토큰이 만료되었는지 확인
+      const expirationTime = tokens.accessToken.payload.exp as number;
+      const currentTime = Math.floor(Date.now() / 1000);
+
+      if (expirationTime <= currentTime) {
+        console.log('Token expired');
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Token check error:', error);
+      return false;
+    }
+  };
+
+  // 세션 체크 및 자동 로그아웃
+  const checkSession = async () => {
+    const isValid = await checkTokenValidity();
+    if (!isValid && user) {
+      console.log('Session expired, logging out');
+      await logout();
+      alert('세션이 만료되었습니다. 다시 로그인해주세요.');
+    }
+  };
+
+  // 세션 체크 인터벌 시작
+  const startSessionCheck = () => {
+    // 기존 인터벌이 있으면 제거
+    if (sessionCheckIntervalRef.current) {
+      clearInterval(sessionCheckIntervalRef.current);
+    }
+
+    // 새로운 인터벌 설정
+    sessionCheckIntervalRef.current = setInterval(() => {
+      checkSession();
+    }, TOKEN_CHECK_INTERVAL);
+  };
+
+  // 세션 체크 인터벌 중지
+  const stopSessionCheck = () => {
+    if (sessionCheckIntervalRef.current) {
+      clearInterval(sessionCheckIntervalRef.current);
+      sessionCheckIntervalRef.current = null;
+    }
+  };
 
   const fetchCurrentUser = async () => {
     try {
       const currentUser = await getCurrentUser();
+
+      // 토큰 유효성 체크
+      const isValid = await checkTokenValidity();
+      if (!isValid) {
+        setUser(null);
+        return;
+      }
 
       // DynamoDB에서 사용자 프로필 가져오기
       const userProfile = await UserService.getUserProfile(currentUser.userId);
@@ -51,9 +122,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
         setUser(newProfile);
       }
+
+      // 세션 체크 시작
+      startSessionCheck();
     } catch (error) {
       console.error('Error fetching user:', error);
       setUser(null);
+      stopSessionCheck();
     }
   };
 
@@ -147,6 +222,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await signOut();
       setUser(null);
+      stopSessionCheck();
     } catch (error) {
       console.error('Logout error:', error);
     }
@@ -154,6 +230,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     fetchCurrentUser().finally(() => setIsLoading(false));
+
+    // 컴포넌트 언마운트 시 인터벌 정리
+    return () => {
+      stopSessionCheck();
+    };
   }, []);
 
   return (
