@@ -1,17 +1,23 @@
 import React, { Suspense, lazy } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { AnimatePresence } from 'framer-motion';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BotProvider } from './contexts/BotContext';
 import { Layout } from './components/layout/Layout';
+import { PageTransition } from './components/layout/PageTransition';
 import { Role } from './types';
 import { configureAmplify } from './aws-config';
 
 configureAmplify();
 
+const queryClient = new QueryClient();
+
 // Lazy load page components
 const Login = lazy(() => import('./pages/Login').then(module => ({ default: module.Login })));
 const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
 const ChatRoom = lazy(() => import('./pages/ChatRoom').then(module => ({ default: module.ChatRoom })));
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase').then(module => ({ default: module.KnowledgeBase })));
 const AdminPanel = lazy(() => import('./pages/AdminPanel').then(module => ({ default: module.AdminPanel })));
 
 // Loading component
@@ -62,44 +68,63 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 const AppRoutes = () => {
+  const location = useLocation();
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={location.pathname}>
+          <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
 
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        } />
+          <Route path="/" element={
+            <ProtectedRoute>
+              <PageTransition>
+                <Dashboard />
+              </PageTransition>
+            </ProtectedRoute>
+          } />
 
-        <Route path="/chat/:agentId" element={
-          <ProtectedRoute>
-            <ChatRoom />
-          </ProtectedRoute>
-        } />
+          <Route path="/chat/:agentId" element={
+            <ProtectedRoute>
+              <PageTransition>
+                <ChatRoom />
+              </PageTransition>
+            </ProtectedRoute>
+          } />
 
-        <Route path="/admin" element={
-          <AdminRoute>
-            <AdminPanel />
-          </AdminRoute>
-        } />
+          <Route path="/knowledge-base" element={
+            <ProtectedRoute>
+              <PageTransition>
+                <KnowledgeBase />
+              </PageTransition>
+            </ProtectedRoute>
+          } />
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+          <Route path="/admin" element={
+            <AdminRoute>
+              <PageTransition>
+                <AdminPanel />
+              </PageTransition>
+            </AdminRoute>
+          } />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AnimatePresence>
     </Suspense>
   );
 };
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <BotProvider>
-        <HashRouter>
-          <AppRoutes />
-        </HashRouter>
-      </BotProvider>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <BotProvider>
+          <HashRouter>
+            <AppRoutes />
+          </HashRouter>
+        </BotProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   );
 };
 

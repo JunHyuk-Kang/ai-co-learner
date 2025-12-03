@@ -123,6 +123,21 @@ export const ChatService = {
       throw error;
     }
   },
+
+  // Simulated streaming for Phase 3
+  streamMessage: async (botId: string, userText: string, onChunk: (chunk: string) => void): Promise<void> => {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Mock response
+    const fullResponse = "This is a simulated streaming response. In Phase 3, we are implementing the UI to handle real-time text generation. This makes the AI feel more alive and responsive!";
+    const chunks = fullResponse.split(' ');
+
+    for (const chunk of chunks) {
+      await new Promise(resolve => setTimeout(resolve, 100)); // Simulate typing speed
+      onChunk(chunk + ' ');
+    }
+  },
 };
 
 export const BotService = {
