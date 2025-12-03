@@ -81,7 +81,10 @@
       "Bash(\"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\" lambda invoke --function-name ai-co-learner-chat --payload file://c:/Users/Juny/Desktop/synnex/ai-co-learner/test-lambda-direct.json --region ap-northeast-2 response.json --no-cli-pager)",
       "Bash(\"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\" lambda invoke --function-name ai-co-learner-chat --cli-binary-format raw-in-base64-out --payload file://c:/Users/Juny/Desktop/synnex/ai-co-learner/test-lambda-direct.json --region ap-northeast-2 response.json --no-cli-pager)",
       "Bash(\"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\" lambda update-function-code --function-name ai-co-learner-chat --zip-file \"fileb://c:/Users/Juny/Desktop/synnex/ai-co-learner/lambda/chat-api-route-fixed.zip\" --region ap-northeast-2 --no-cli-pager)",
-      "Bash(\"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\" lambda invoke --function-name ai-co-learner-chat --cli-binary-format raw-in-base64-out --payload file://c:/Users/Juny/Desktop/synnex/ai-co-learner/test-lambda-direct.json --region ap-northeast-2 response2.json --no-cli-pager)"
+      "Bash(\"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\" lambda invoke --function-name ai-co-learner-chat --cli-binary-format raw-in-base64-out --payload file://c:/Users/Juny/Desktop/synnex/ai-co-learner/test-lambda-direct.json --region ap-northeast-2 response2.json --no-cli-pager)",
+      "Bash(git cherry-pick:*)",
+      "Bash(git stash:*)",
+      "Bash(del cors-response.json request-templates.json response.json response2.json test-cors.html test-lambda-direct.json)"
     ],
     "deny": [],
     "ask": []
