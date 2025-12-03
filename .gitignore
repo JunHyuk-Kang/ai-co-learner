@@ -19,9 +19,16 @@ dist-ssr
 # Lambda deployment files
 lambda/**/*.zip
 *.zip
+!lambda/**/deploy.bat
 
 # Test and debug files
 batch-response*.json
+*-response*.json
+response*.json
+test-*.json
+test-*.html
+cors-*.json
+request-templates.json
 nul
 
 # AWS and sensitive files
@@ -32,6 +39,7 @@ mock-integration.json
 
 # PowerShell scripts (setup completed)
 *.ps1
+test-*.ps1
 
 # Editor directories and files
 .vscode/*
