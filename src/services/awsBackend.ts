@@ -261,3 +261,72 @@ export const AdminService = {
     }
   },
 };
+
+export interface AssessmentQuestion {
+  id: string;
+  question: string;
+  expectedCompetencies: string[];
+}
+
+export interface AssessmentResult {
+  questionQuality: number;
+  thinkingDepth: number;
+  creativity: number;
+  communicationClarity: number;
+  executionOriented: number;
+  collaborationSignal: number;
+}
+
+export interface AssessmentProgress {
+  current: number;
+  total: number;
+}
+
+export const AssessmentService = {
+  startAssessment: async (userId: string): Promise<{ assessmentId: string; firstQuestion: AssessmentQuestion; totalQuestions: number }> => {
+    try {
+      const data = await apiPost('/assessment/start', { userId });
+      return data;
+    } catch (error) {
+      console.error('Failed to start assessment:', error);
+      throw error;
+    }
+  },
+
+  submitAnswer: async (userId: string, assessmentId: string, questionId: string, answer: string): Promise<{
+    analysis: string;
+    isCompleted: boolean;
+    nextQuestion: AssessmentQuestion | null;
+    progress: AssessmentProgress;
+    results: AssessmentResult | null;
+  }> => {
+    try {
+      const data = await apiPost('/assessment/submit', {
+        userId,
+        assessmentId,
+        questionId,
+        answer,
+      });
+      return data;
+    } catch (error) {
+      console.error('Failed to submit answer:', error);
+      throw error;
+    }
+  },
+
+  getResults: async (userId: string): Promise<{
+    assessmentId: string;
+    status: string;
+    results: AssessmentResult;
+    completedAt: number;
+    createdAt: number;
+  } | null> => {
+    try {
+      const data = await apiGet(`/assessment/results/${userId}`);
+      return data;
+    } catch (error) {
+      console.error('Failed to get assessment results:', error);
+      return null;
+    }
+  },
+};

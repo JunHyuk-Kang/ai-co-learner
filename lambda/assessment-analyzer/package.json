@@ -1,0 +1,15 @@
+{
+  "name": "assessment-analyzer",
+  "version": "1.0.0",
+  "description": "AI Co-Learner Assessment Analyzer Lambda",
+  "main": "index.mjs",
+  "type": "module",
+  "scripts": {
+    "deploy": "powershell \"Compress-Archive -Path . -DestinationPath ../assessment-analyzer.zip -Force\""
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.478.0",
+    "@aws-sdk/client-dynamodb": "^3.478.0",
+    "@aws-sdk/lib-dynamodb": "^3.478.0"
+  }
+}

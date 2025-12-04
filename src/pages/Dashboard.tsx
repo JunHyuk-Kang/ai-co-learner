@@ -4,10 +4,10 @@ import { useBots } from '../contexts/BotContext';
 import { CompetencyRadar } from '../components/dashboard/CompetencyRadar';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { BotService } from '../services/awsBackend';
+import { BotService, UserService } from '../services/awsBackend';
 import { BotTemplate } from '../types';
-import { Link } from 'react-router-dom';
-import { MessageSquare, Plus, X, Rocket, Brain, Crown, Users, Trash2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { MessageSquare, Plus, X, Rocket, Brain, Crown, Users, Trash2, ClipboardList } from 'lucide-react';
 
 // Mapping theme colors to Tailwind classes
 const colorMap: Record<string, string> = {
@@ -31,7 +31,9 @@ const bgMap: Record<string, string> = {
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const { bots: myBots, loadBots } = useBots();
+  const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [hasCompetencies, setHasCompetencies] = useState(false);
 
   const [templates, setTemplates] = useState<BotTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -40,7 +42,14 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     BotService.getTemplates().then(setTemplates);
-  }, []);
+
+    // 역량 데이터가 있는지 확인
+    if (user) {
+      UserService.getCompetencies(user.id).then((data) => {
+        setHasCompetencies(data !== null && data.competencies.length > 0);
+      });
+    }
+  }, [user]);
 
   const handleCreateBot = async () => {
     if (!user || !selectedTemplateId || !newBotName) return;
@@ -110,8 +119,38 @@ export const Dashboard: React.FC = () => {
             <div className="bg-[#1E1E1E] rounded-xl p-6 border border-[#333]">
                 <div className="flex justify-between items-center mb-4">
                     <h3 className="font-bold text-gray-200">핵심 역량 분석</h3>
+                    {hasCompetencies && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => navigate('/assessment')}
+                        className="gap-2 text-xs"
+                      >
+                        <ClipboardList size={14} />
+                        재진단
+                      </Button>
+                    )}
                 </div>
-                <CompetencyRadar userId={user?.id || ''} />
+                {!hasCompetencies ? (
+                  <div className="text-center py-8">
+                    <ClipboardList className="mx-auto mb-4 text-gray-500" size={48} />
+                    <p className="text-sm text-gray-400 mb-4">
+                      아직 역량 진단을 완료하지 않으셨습니다.
+                      <br />
+                      진단을 통해 맞춤형 학습 경로를 받아보세요!
+                    </p>
+                    <Button
+                      size="sm"
+                      onClick={() => navigate('/assessment')}
+                      className="gap-2"
+                    >
+                      <ClipboardList size={16} />
+                      진단 시작하기
+                    </Button>
+                  </div>
+                ) : (
+                  <CompetencyRadar userId={user?.id || ''} />
+                )}
             </div>
 
             {/* Badges Card */}

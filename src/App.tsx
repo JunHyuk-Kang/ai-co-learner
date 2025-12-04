@@ -19,6 +19,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ defau
 const ChatRoom = lazy(() => import('./pages/ChatRoom').then(module => ({ default: module.ChatRoom })));
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase').then(module => ({ default: module.KnowledgeBase })));
 const AdminPanel = lazy(() => import('./pages/AdminPanel').then(module => ({ default: module.AdminPanel })));
+const InitialAssessment = lazy(() => import('./pages/InitialAssessment').then(module => ({ default: module.InitialAssessment })));
 
 // Loading component
 const LoadingFallback = () => (
@@ -95,6 +96,14 @@ const AppRoutes = () => {
             <ProtectedRoute>
               <PageTransition>
                 <KnowledgeBase />
+              </PageTransition>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/assessment" element={
+            <ProtectedRoute>
+              <PageTransition>
+                <InitialAssessment />
               </PageTransition>
             </ProtectedRoute>
           } />

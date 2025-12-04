@@ -14,6 +14,8 @@ const SESSIONS_TABLE = "ai-co-learner-chat-sessions";
 const TEMPLATES_TABLE = "ai-co-learner-bot-templates";
 const USERS_TABLE = "ai-co-learner-users";
 const USER_BOTS_TABLE = "ai-co-learner-user-bots";
+const ASSESSMENTS_TABLE = "ai-co-learner-assessments";
+const COMPETENCIES_TABLE = "ai-co-learner-user-competencies";
 // Claude 3 Haiku - 빠르고 저렴하며 한국어 성능 우수
 const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
 
@@ -88,6 +90,19 @@ export const handler = async (event) => {
 
     if (method === 'POST' && path.includes('/admin/users/block')) {
       return await blockUser(event, headers);
+    }
+
+    // Assessment APIs
+    if (method === 'POST' && path.includes('/assessment/start')) {
+      return await startAssessment(event, headers);
+    }
+
+    if (method === 'POST' && path.includes('/assessment/submit')) {
+      return await submitAssessmentAnswer(event, headers);
+    }
+
+    if (method === 'GET' && path.includes('/assessment/results')) {
+      return await getAssessmentResults(event, headers);
     }
 
     // GET /users/{userId}/competencies - 사용자 역량 조회
@@ -868,4 +883,354 @@ function calculateTrend(historicalScores) {
   const previous = sorted[1].score;
 
   return latest - previous;
+}
+
+// ===== ASSESSMENT APIs =====
+
+// 역량 평가를 위한 질문 템플릿
+const ASSESSMENT_QUESTIONS = [
+  {
+    id: "q1",
+    question: "최근에 해결하고 싶었던 문제나 궁금했던 주제가 있나요? 그것에 대해 어떤 질문을 스스로에게 던졌는지 설명해주세요.",
+    expectedCompetencies: ["questionQuality", "thinkingDepth"]
+  },
+  {
+    id: "q2",
+    question: "일상에서 마주친 평범한 상황이나 물건을 하나 떠올려보세요. 그것을 완전히 다른 방식으로 활용하거나 개선한다면 어떻게 하시겠어요?",
+    expectedCompetencies: ["creativity", "thinkingDepth"]
+  },
+  {
+    id: "q3",
+    question: "복잡한 개념이나 아이디어를 다른 사람에게 설명해야 했던 경험이 있나요? 어떻게 설명했는지 구체적으로 말씀해주세요.",
+    expectedCompetencies: ["communicationClarity", "thinkingDepth"]
+  },
+  {
+    id: "q4",
+    question: "최근에 계획을 세우고 실행에 옮긴 경험이 있나요? 어떤 단계를 거쳤고, 어떤 결과가 나왔나요?",
+    expectedCompetencies: ["executionOriented", "thinkingDepth"]
+  },
+  {
+    id: "q5",
+    question: "다른 사람과 함께 무언가를 해결하거나 만들어낸 경험을 공유해주세요. 그 과정에서 어떤 역할을 하셨나요?",
+    expectedCompetencies: ["collaborationSignal", "communicationClarity"]
+  },
+  {
+    id: "q6",
+    question: "어떤 문제를 깊이 파고들어 생각해본 적이 있나요? 표면적인 답 너머에서 발견한 것이 있다면 무엇인가요?",
+    expectedCompetencies: ["thinkingDepth", "questionQuality"]
+  },
+  {
+    id: "q7",
+    question: "기존에 없던 새로운 것을 시도하거나 만들어본 경험이 있나요? 그 아이디어는 어디서 왔고, 어떻게 실현했나요?",
+    expectedCompetencies: ["creativity", "executionOriented"]
+  },
+  {
+    id: "q8",
+    question: "복잡한 정보나 데이터를 단순하고 명확하게 정리해본 적이 있나요? 어떤 방법을 사용했나요?",
+    expectedCompetencies: ["communicationClarity", "thinkingDepth"]
+  }
+];
+
+// 진단 시작
+async function startAssessment(event, headers) {
+  const body = JSON.parse(event.body || "{}");
+  const { userId } = body;
+
+  if (!userId) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: "Missing required field: userId" })
+    };
+  }
+
+  const assessmentId = `assess-${Date.now()}`;
+
+  const assessmentData = {
+    userId,
+    assessmentId,
+    assessmentType: "initial",
+    status: "in_progress",
+    questions: ASSESSMENT_QUESTIONS,
+    answers: [],
+    currentQuestionIndex: 0,
+    createdAt: Date.now()
+  };
+
+  await dynamoClient.send(new PutCommand({
+    TableName: ASSESSMENTS_TABLE,
+    Item: assessmentData
+  }));
+
+  return {
+    statusCode: 200,
+    headers,
+    body: JSON.stringify({
+      assessmentId,
+      firstQuestion: ASSESSMENT_QUESTIONS[0],
+      totalQuestions: ASSESSMENT_QUESTIONS.length
+    })
+  };
+}
+
+// Claude를 사용하여 답변 분석
+async function analyzeAnswerWithClaude(question, answer) {
+  const prompt = `당신은 학습자의 역량을 분석하는 전문가입니다. 다음 질문과 답변을 분석하여 6가지 역량을 1-10점으로 평가해주세요.
+
+질문: ${question}
+답변: ${answer}
+
+평가해야 할 6가지 역량:
+1. questionQuality (질문의 질): 깊이 있고 핵심을 파고드는 질문을 하는 능력
+2. thinkingDepth (사고의 깊이): 표면적이지 않고 본질을 파악하는 사고 능력
+3. creativity (창의성): 새롭고 독창적인 관점이나 아이디어를 제시하는 능력
+4. communicationClarity (소통 명확성): 명확하고 이해하기 쉽게 설명하는 능력
+5. executionOriented (실행 지향성): 계획을 세우고 실제로 실행하는 능력
+6. collaborationSignal (협업 신호): 타인과 협력하고 소통하는 능력
+
+답변 형식:
+{
+  "questionQuality": <1-10 점수>,
+  "thinkingDepth": <1-10 점수>,
+  "creativity": <1-10 점수>,
+  "communicationClarity": <1-10 점수>,
+  "executionOriented": <1-10 점수>,
+  "collaborationSignal": <1-10 점수>,
+  "analysis": "<간단한 분석 코멘트>"
+}
+
+JSON만 반환해주세요.`;
+
+  try {
+    const response = await bedrockClient.send(new InvokeModelCommand({
+      modelId: MODEL_ID,
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify({
+        anthropic_version: "bedrock-2023-05-31",
+        max_tokens: 1000,
+        temperature: 0.3,
+        messages: [
+          { role: "user", content: prompt }
+        ]
+      })
+    }));
+
+    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
+    const analysisText = responseBody.content[0].text;
+
+    // JSON 추출 (```json ``` 태그가 있을 수 있음)
+    const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+
+    return JSON.parse(analysisText);
+  } catch (error) {
+    console.error("Claude analysis error:", error);
+    throw error;
+  }
+}
+
+// 답변 제출
+async function submitAssessmentAnswer(event, headers) {
+  const body = JSON.parse(event.body || "{}");
+  const { userId, assessmentId, questionId, answer } = body;
+
+  if (!userId || !assessmentId || !questionId || !answer) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: "Missing required fields" })
+    };
+  }
+
+  try {
+    // 1. 진단 데이터 가져오기
+    const getResult = await dynamoClient.send(new GetCommand({
+      TableName: ASSESSMENTS_TABLE,
+      Key: { userId, assessmentId }
+    }));
+
+    if (!getResult.Item) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: "Assessment not found" })
+      };
+    }
+
+    const assessment = getResult.Item;
+    const questionIndex = assessment.questions.findIndex(q => q.id === questionId);
+
+    if (questionIndex === -1) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: "Question not found" })
+      };
+    }
+
+    const question = assessment.questions[questionIndex];
+
+    // 2. Claude로 답변 분석
+    const analysis = await analyzeAnswerWithClaude(question.question, answer);
+
+    // 3. 답변 및 분석 결과 저장
+    const answerData = {
+      questionId,
+      answer,
+      analysis,
+      timestamp: Date.now()
+    };
+
+    assessment.answers = assessment.answers || [];
+    assessment.answers.push(answerData);
+    assessment.currentQuestionIndex = questionIndex + 1;
+
+    // 4. 모든 질문을 완료했는지 확인
+    const isCompleted = assessment.currentQuestionIndex >= assessment.questions.length;
+
+    if (isCompleted) {
+      // 최종 점수 계산
+      const finalScores = calculateAssessmentFinalScores(assessment.answers);
+      assessment.status = "completed";
+      assessment.results = finalScores;
+      assessment.completedAt = Date.now();
+
+      // 사용자 역량 테이블에 저장
+      await saveCompetenciesToUserTable(userId, finalScores);
+    }
+
+    // 5. 진단 데이터 업데이트
+    await dynamoClient.send(new PutCommand({
+      TableName: ASSESSMENTS_TABLE,
+      Item: assessment
+    }));
+
+    // 6. 다음 질문 반환
+    const nextQuestion = isCompleted
+      ? null
+      : assessment.questions[assessment.currentQuestionIndex];
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        analysis: analysis.analysis,
+        isCompleted,
+        nextQuestion,
+        progress: {
+          current: assessment.currentQuestionIndex,
+          total: assessment.questions.length
+        },
+        results: isCompleted ? assessment.results : null
+      })
+    };
+  } catch (error) {
+    console.error("Submit answer error:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
+}
+
+// 최종 점수 계산 (모든 답변의 평균)
+function calculateAssessmentFinalScores(answers) {
+  const competencies = [
+    "questionQuality",
+    "thinkingDepth",
+    "creativity",
+    "communicationClarity",
+    "executionOriented",
+    "collaborationSignal"
+  ];
+
+  const scores = {};
+
+  for (const competency of competencies) {
+    const sum = answers.reduce((acc, answer) => {
+      return acc + (answer.analysis[competency] || 0);
+    }, 0);
+    // 1-10 스케일을 10-100 스케일로 변환 (육각형 차트용)
+    const avgScore = sum / answers.length;
+    scores[competency] = Math.round(avgScore * 10); // 10배로 변환하여 정수로
+  }
+
+  return scores;
+}
+
+// 사용자 역량 테이블에 저장
+async function saveCompetenciesToUserTable(userId, scores) {
+  const competencies = Object.keys(scores);
+
+  for (const competency of competencies) {
+    await dynamoClient.send(new PutCommand({
+      TableName: COMPETENCIES_TABLE,
+      Item: {
+        userId,
+        competency,
+        score: scores[competency],
+        updatedAt: Date.now(),
+        totalMessages: 0,
+        historicalScores: [
+          {
+            score: scores[competency],
+            timestamp: Date.now(),
+            source: "initial_assessment"
+          }
+        ]
+      }
+    }));
+  }
+}
+
+// 진단 결과 조회
+async function getAssessmentResults(event, headers) {
+  const pathParts = event.path.split('/');
+  const userId = pathParts[3]; // /assessment/results/{userId}
+
+  try {
+    // 사용자의 가장 최근 진단 결과 조회
+    const result = await dynamoClient.send(new QueryCommand({
+      TableName: ASSESSMENTS_TABLE,
+      KeyConditionExpression: "userId = :userId",
+      ExpressionAttributeValues: {
+        ":userId": userId
+      },
+      ScanIndexForward: false, // 최신순
+      Limit: 1
+    }));
+
+    if (!result.Items || result.Items.length === 0) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: "No assessment found for this user" })
+      };
+    }
+
+    const assessment = result.Items[0];
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        assessmentId: assessment.assessmentId,
+        status: assessment.status,
+        results: assessment.results,
+        completedAt: assessment.completedAt,
+        createdAt: assessment.createdAt
+      })
+    };
+  } catch (error) {
+    console.error("Get assessment results error:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
 }
