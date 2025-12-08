@@ -51,6 +51,10 @@ ai-co-learner/
 
 ## 개발 시 주의사항
 
+### 개발 환경
+Windows : nul 파일이 생성안되게 주의
+
+
 ### Lambda 함수 배포
 ```bash
 cd lambda/chat-api

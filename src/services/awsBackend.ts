@@ -125,7 +125,7 @@ export const ChatService = {
   },
 
   // Simulated streaming for Phase 3
-  streamMessage: async (botId: string, userText: string, onChunk: (chunk: string) => void): Promise<void> => {
+  streamMessage: async (_botId: string, _userText: string, onChunk: (chunk: string) => void): Promise<void> => {
     // Simulate network delay
     await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -143,7 +143,7 @@ export const ChatService = {
 export const BotService = {
   getTemplates: async () => {
     try {
-      const data = await apiGet('/bots/templates');
+      const data = await apiGet<any>('/bots/templates');
       return data;
     } catch (error) {
       console.error('Failed to get templates:', error);
@@ -153,7 +153,7 @@ export const BotService = {
 
   getUserBots: async (userId: string) => {
     try {
-      const data = await apiGet(`/bots/user/${userId}`);
+      const data = await apiGet<any>(`/bots/user/${userId}`);
       return data;
     } catch (error) {
       console.error('Failed to get user bots:', error);
@@ -163,7 +163,7 @@ export const BotService = {
 
   createUserBot: async (userId: string, templateId: string, name: string) => {
     try {
-      const data = await apiPost('/bots/create', {
+      const data = await apiPost<any>('/bots/create', {
         userId,
         templateId,
         name,
@@ -177,7 +177,7 @@ export const BotService = {
 
   createTemplate: async (templateData: any) => {
     try {
-      const data = await apiPost('/admin/templates/create', templateData);
+      const data = await apiPost<any>('/admin/templates/create', templateData);
       return data;
     } catch (error) {
       console.error('Failed to create template:', error);
@@ -187,7 +187,7 @@ export const BotService = {
 
   updateTemplate: async (templateId: string, templateData: any) => {
     try {
-      const data = await apiPost('/admin/templates/update', {
+      const data = await apiPost<any>('/admin/templates/update', {
         templateId,
         ...templateData,
       });
@@ -200,7 +200,7 @@ export const BotService = {
 
   deleteTemplate: async (templateId: string) => {
     try {
-      const data = await apiPost('/admin/templates/delete', {
+      const data = await apiPost<any>('/admin/templates/delete', {
         templateId,
       });
       return data;
@@ -212,7 +212,7 @@ export const BotService = {
 
   deleteUserBot: async (userId: string, botId: string) => {
     try {
-      const data = await apiPost('/bots/delete', {
+      const data = await apiPost<any>('/bots/delete', {
         userId,
         botId,
       });
@@ -222,12 +222,22 @@ export const BotService = {
       throw error;
     }
   },
+
+  getRecommendedTemplates: async (userId: string) => {
+    try {
+      const data = await apiGet<any>(`/bots/recommended/${userId}`);
+      return data;
+    } catch (error) {
+      console.error('Failed to get recommended templates:', error);
+      return [];
+    }
+  },
 };
 
 export const AdminService = {
   getAllUsers: async () => {
     try {
-      const data = await apiGet('/admin/users');
+      const data = await apiGet<any>('/admin/users');
       return data;
     } catch (error) {
       console.error('Failed to get all users:', error);
@@ -237,7 +247,7 @@ export const AdminService = {
 
   updateUserRole: async (userId: string, role: string) => {
     try {
-      const data = await apiPost('/admin/users/update-role', {
+      const data = await apiPost<any>('/admin/users/update-role', {
         userId,
         role,
       });
@@ -250,7 +260,7 @@ export const AdminService = {
 
   blockUser: async (userId: string, blocked: boolean) => {
     try {
-      const data = await apiPost('/admin/users/block', {
+      const data = await apiPost<any>('/admin/users/block', {
         userId,
         blocked,
       });
@@ -262,10 +272,16 @@ export const AdminService = {
   },
 };
 
+export interface AssessmentOption {
+  text: string;
+  score: number;
+}
+
 export interface AssessmentQuestion {
   id: string;
   question: string;
-  expectedCompetencies: string[];
+  options: AssessmentOption[];
+  competency: string;
 }
 
 export interface AssessmentResult {
@@ -285,7 +301,7 @@ export interface AssessmentProgress {
 export const AssessmentService = {
   startAssessment: async (userId: string): Promise<{ assessmentId: string; firstQuestion: AssessmentQuestion; totalQuestions: number }> => {
     try {
-      const data = await apiPost('/assessment/start', { userId });
+      const data = await apiPost<{ assessmentId: string; firstQuestion: AssessmentQuestion; totalQuestions: number }>('/assessment/start', { userId });
       return data;
     } catch (error) {
       console.error('Failed to start assessment:', error);
@@ -293,19 +309,23 @@ export const AssessmentService = {
     }
   },
 
-  submitAnswer: async (userId: string, assessmentId: string, questionId: string, answer: string): Promise<{
-    analysis: string;
+  submitAnswer: async (userId: string, assessmentId: string, questionId: string, selectedOptionIndex: number): Promise<{
     isCompleted: boolean;
     nextQuestion: AssessmentQuestion | null;
     progress: AssessmentProgress;
     results: AssessmentResult | null;
   }> => {
     try {
-      const data = await apiPost('/assessment/submit', {
+      const data = await apiPost<{
+        isCompleted: boolean;
+        nextQuestion: AssessmentQuestion | null;
+        progress: AssessmentProgress;
+        results: AssessmentResult | null;
+      }>('/assessment/submit', {
         userId,
         assessmentId,
         questionId,
-        answer,
+        selectedOptionIndex,
       });
       return data;
     } catch (error) {
@@ -322,10 +342,211 @@ export const AssessmentService = {
     createdAt: number;
   } | null> => {
     try {
-      const data = await apiGet(`/assessment/results/${userId}`);
+      const data = await apiGet<{
+        assessmentId: string;
+        status: string;
+        results: AssessmentResult;
+        completedAt: number;
+        createdAt: number;
+      } | null>(`/assessment/results/${userId}`);
       return data;
     } catch (error) {
       console.error('Failed to get assessment results:', error);
+      return null;
+    }
+  },
+};
+
+// Quest 타입 정의
+export interface Quest {
+  questId: string;
+  questType: 'conversation' | 'challenge' | 'reflection';
+  title: string;
+  description: string;
+  targetCompetency: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  status: 'active' | 'completed';
+  progress: {
+    currentMessages: number;
+    currentScore: number;
+  };
+  completionCriteria: {
+    messageCount: number;
+    minScore: number;
+  };
+  rewards: {
+    xp: number;
+    competencyBoost: Record<string, number>;
+  };
+  completedAt?: string;
+  rewardClaimed?: boolean;
+}
+
+export interface UserQuests {
+  userId: string;
+  questDate: string;
+  quests: Quest[];
+  targetCompetency: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+// Quest Service
+export const QuestService = {
+  getUserQuests: async (userId: string): Promise<UserQuests | null> => {
+    try {
+      const data = await apiGet<UserQuests>(`/quests/${userId}`);
+      return data;
+    } catch (error) {
+      console.error('Failed to get user quests:', error);
+      return null;
+    }
+  },
+};
+
+// Competency History 타입 정의
+export interface CompetencyHistoryData {
+  date: string;
+  competencies: Record<string, number>;
+  messageCount: number;
+}
+
+export interface CompetencyHistory {
+  history: CompetencyHistoryData[];
+  startDate: string;
+  endDate: string;
+  totalDays: number;
+}
+
+// Competency History Service
+export const CompetencyHistoryService = {
+  getHistory: async (userId: string, days: number = 30): Promise<CompetencyHistory | null> => {
+    try {
+      const data = await apiGet<CompetencyHistory>(`/users/${userId}/competencies/history?days=${days}`);
+      return data;
+    } catch (error) {
+      console.error('Failed to get competency history:', error);
+      return null;
+    }
+  },
+};
+
+// Achievement 타입 정의
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  type: 'milestone' | 'competency' | 'streak';
+  tier: 'bronze' | 'silver' | 'gold';
+  criteria: {
+    messageCount?: number;
+    questsCompleted?: number;
+    competency?: string;
+    score?: number;
+    consecutiveDays?: number;
+  };
+  unlocked?: boolean;
+  unlockedAt?: string;
+  progress?: number;
+}
+
+export interface UserAchievements {
+  unlockedAchievements: Achievement[];
+  allAchievements: Achievement[];
+  totalUnlocked: number;
+  totalAchievements: number;
+}
+
+// Achievement Service
+export const AchievementService = {
+  getUserAchievements: async (userId: string): Promise<UserAchievements | null> => {
+    try {
+      const data = await apiGet<UserAchievements>(`/achievements/${userId}`);
+      return data;
+    } catch (error) {
+      console.error('Failed to get user achievements:', error);
+      return null;
+    }
+  },
+};
+
+// Learning Analysis 타입 정의
+export interface CompetencyItem {
+  name: string;
+  score: number;
+}
+
+export interface CompetencyAnalysis {
+  strengths: CompetencyItem[];
+  weaknesses: CompetencyItem[];
+  balanced: CompetencyItem[];
+  avgScore: number;
+  highest: CompetencyItem;
+  lowest: CompetencyItem;
+}
+
+export interface ActivityHour {
+  hour: number;
+  count: number;
+  percentage: number;
+}
+
+export interface ActivityDay {
+  day: number;
+  dayName: string;
+  count: number;
+  percentage: number;
+}
+
+export interface ActivityAnalysis {
+  totalMessages: number;
+  avgMessageLength: number;
+  peakHours: ActivityHour[];
+  peakDays: ActivityDay[];
+}
+
+export interface CompetencyChange {
+  name: string;
+  oldScore: number;
+  newScore: number;
+  change: number;
+  changePercent: number;
+}
+
+export interface GrowthAnalysis {
+  trend: 'improving' | 'declining' | 'stable' | 'insufficient_data';
+  growthRate: number;
+  improvingCompetencies: CompetencyChange[];
+  decliningCompetencies: CompetencyChange[];
+  daysCovered: number;
+}
+
+export interface Insight {
+  type: 'strength' | 'weakness' | 'growth' | 'alert' | 'pattern' | 'achievement';
+  title: string;
+  message: string;
+  priority: 'high' | 'medium' | 'low';
+}
+
+export interface LearningAnalysis {
+  userId: string;
+  analyzedAt: string;
+  competencyAnalysis: CompetencyAnalysis | null;
+  activityAnalysis: ActivityAnalysis | null;
+  growthAnalysis: GrowthAnalysis | null;
+  insights: Insight[];
+  dataAvailable: boolean;
+}
+
+// Learning Analysis Service
+export const LearningAnalysisService = {
+  getAnalysis: async (userId: string): Promise<LearningAnalysis | null> => {
+    try {
+      const data = await apiGet<LearningAnalysis>(`/analysis/${userId}`);
+      return data;
+    } catch (error) {
+      console.error('Failed to get learning analysis:', error);
       return null;
     }
   },

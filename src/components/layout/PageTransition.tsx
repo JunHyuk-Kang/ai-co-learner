@@ -34,7 +34,7 @@ export const PageTransition: React.FC<PageTransitionProps> = ({ children }) => {
             exit="out"
             variants={pageVariants}
             transition={pageTransition}
-            className="w-full h-full"
+            className="flex-1 flex flex-col"
         >
             {children}
         </motion.div>

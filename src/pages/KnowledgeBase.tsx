@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '../components/ui/Button';
-import { Upload, FileText, Trash2, Plus, ArrowLeft } from 'lucide-react';
+import { Upload, FileText, Trash2, ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface Document {
@@ -40,7 +40,7 @@ export const KnowledgeBase: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-background text-white p-8">
+        <div className="flex-1 overflow-y-auto bg-[#121212] text-white p-4 md:p-8">
             <div className="max-w-4xl mx-auto">
                 <div className="flex items-center gap-4 mb-8">
                     <Button variant="ghost" onClick={() => navigate(-1)}>
@@ -84,8 +84,8 @@ export const KnowledgeBase: React.FC = () => {
 
                             <div className="flex items-center gap-4">
                                 <span className={`text-xs px-2 py-1 rounded-full ${doc.status === 'ready' ? 'bg-green-500/20 text-green-400' :
-                                        doc.status === 'processing' ? 'bg-yellow-500/20 text-yellow-400' :
-                                            'bg-red-500/20 text-red-400'
+                                    doc.status === 'processing' ? 'bg-yellow-500/20 text-yellow-400' :
+                                        'bg-red-500/20 text-red-400'
                                     }`}>
                                     {doc.status === 'processing' ? 'Processing...' :
                                         doc.status === 'ready' ? 'Ready' : 'Error'}

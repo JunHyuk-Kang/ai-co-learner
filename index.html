@@ -6,26 +6,10 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>AI Co-Learner</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            primary: '#6366f1',
-            'primary-hover': '#4f46e5',
-            background: '#0A0A0A',
-            surface: '#1E1E1E',
-            border: '#333333'
-          }
-        }
-      }
-    }
-  </script>
 </head>
 
-<body class="bg-background">
-  <div id="root"></div>
+<body class="bg-background h-screen">
+  <div id="root" class="h-full overflow-hidden"></div>
   <script type="module" src="/src/index.tsx"></script>
 </body>
 

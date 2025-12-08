@@ -107,9 +107,9 @@ export const ChatRoom: React.FC = () => {
   if (!session) return <div className="flex-1 flex items-center justify-center text-gray-500">Loading chat...</div>;
 
   return (
-    <div className="flex-1 flex flex-col h-full max-h-screen">
+    <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="h-16 border-b border-border bg-background/95 backdrop-blur flex items-center justify-between px-6 z-10">
+      <header className="h-16 border-b border-border bg-background/95 backdrop-blur flex items-center justify-between px-6 z-10 shrink-0">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="font-bold text-white">{currentBot?.name || '로딩 중...'}</h2>
@@ -161,7 +161,7 @@ export const ChatRoom: React.FC = () => {
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-background border-t border-border sticky bottom-0 z-20">
+      <div className="p-4 bg-background border-t border-border shrink-0 z-20">
         <div className="max-w-3xl mx-auto relative">
           <textarea
             value={input}

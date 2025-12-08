@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { UserBot } from '../types';
+import { UserBotWithDetails } from '../types';
 import { BotService } from '../services/awsBackend';
 import { useAuth } from './AuthContext';
 
 interface BotContextType {
-  bots: (UserBot & { templateName: string; themeColor?: string; description?: string })[];
+  bots: UserBotWithDetails[];
   loadBots: () => Promise<void>;
   isLoading: boolean;
 }
@@ -13,7 +13,7 @@ const BotContext = createContext<BotContextType | undefined>(undefined);
 
 export const BotProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [bots, setBots] = useState<(UserBot & { templateName: string; themeColor?: string; description?: string })[]>([]);
+  const [bots, setBots] = useState<UserBotWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const loadBots = async () => {

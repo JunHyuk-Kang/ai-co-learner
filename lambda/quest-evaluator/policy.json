@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:UpdateItem"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-daily-quests",
+        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-learning-analytics",
+        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-user-competencies"
+      ]
+    }
+  ]
+}

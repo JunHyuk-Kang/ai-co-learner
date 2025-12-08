@@ -132,27 +132,27 @@ export const AdminPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-8">
-      <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#121212]">
+      <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <h1 className="text-3xl font-bold text-white mb-2">관리자 패널</h1>
             <p className="text-gray-400">
                 {view === 'templates' ? '봇 템플릿 및 시스템 프롬프트 관리' : '플랫폼 전체 사용자 관리'}
             </p>
         </div>
-        <div className="flex bg-surface p-1 rounded-lg border border-border">
-             <button 
+        <div className="flex bg-surface p-1 rounded-lg border border-border w-full md:w-auto">
+             <button
                 onClick={() => setView('templates')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${view === 'templates' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
+                className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all ${view === 'templates' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
              >
-                <Bot size={16} className="inline mr-2" />
+                <Bot size={16} className="inline mr-1 md:mr-2" />
                 봇 템플릿
              </button>
-             <button 
+             <button
                 onClick={() => setView('users')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${view === 'users' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
+                className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all ${view === 'users' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
              >
-                <Users size={16} className="inline mr-2" />
+                <Users size={16} className="inline mr-1 md:mr-2" />
                 사용자 관리
              </button>
         </div>
@@ -172,7 +172,7 @@ export const AdminPanel: React.FC = () => {
                 <Card className="mb-8 border-primary/50 bg-primary/5 animate-in fade-in slide-in-from-top-4">
                     <div className="space-y-4">
                         <h3 className="font-bold text-white">{isEditing ? '봇 템플릿 수정' : '새 봇 템플릿 생성'}</h3>
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <Input label="이름" value={newName} onChange={e => setNewName(e.target.value)} placeholder="예: 창의력 마스터" />
                             <Input label="설명" value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="간단한 설명" />
                         </div>
@@ -214,22 +214,22 @@ export const AdminPanel: React.FC = () => {
             <div className="grid gap-4">
                 {templates.map(tmpl => (
                     <Card key={tmpl.id} className="group hover:border-gray-600 transition-colors">
-                        <div className="flex justify-between items-start">
-                            <div className="flex items-start gap-4">
+                        <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                            <div className="flex items-start gap-4 flex-1 min-w-0">
                                 <div className="p-3 bg-surface rounded-lg border border-border text-gray-400">
                                     <Bot size={24} />
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-lg text-white">
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-bold text-lg text-white truncate">
                                         {tmpl.name}
                                     </h3>
-                                    <p className="text-sm text-gray-400 mb-3">{tmpl.description}</p>
-                                    <div className="bg-[#121212] p-3 rounded-md border border-border max-w-3xl">
-                                        <p className="text-xs font-mono text-gray-500 line-clamp-2">{tmpl.systemPrompt}</p>
+                                    <p className="text-sm text-gray-400 mb-3 line-clamp-2">{tmpl.description}</p>
+                                    <div className="bg-[#121212] p-3 rounded-md border border-border overflow-hidden">
+                                        <p className="text-xs font-mono text-gray-500 line-clamp-2 break-all">{tmpl.systemPrompt}</p>
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex gap-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
                                 <Button variant="ghost" size="sm" onClick={() => handleEdit(tmpl)}>
                                     <Edit size={16} className="mr-1" />
                                     수정
@@ -252,18 +252,19 @@ export const AdminPanel: React.FC = () => {
 
       {/* --- USERS VIEW --- */}
       {view === 'users' && (
-          <div className="bg-surface border border-border rounded-xl overflow-hidden">
-              <div className="p-4 border-b border-border flex gap-4">
-                  <div className="relative flex-1 max-w-sm">
+          <div className="bg-surface border border-border rounded-xl overflow-hidden overflow-x-auto">
+              <div className="p-4 border-b border-border flex flex-col md:flex-row gap-4">
+                  <div className="relative flex-1 md:max-w-sm">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                      <input 
-                        type="text" 
-                        placeholder="사용자 검색..." 
+                      <input
+                        type="text"
+                        placeholder="사용자 검색..."
                         className="w-full bg-[#121212] border border-border rounded-lg pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-primary"
                       />
                   </div>
               </div>
-              <table className="w-full text-left text-sm text-gray-400">
+              <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-gray-400 min-w-[600px]">
                   <thead className="bg-[#151515] text-xs uppercase font-medium text-gray-500">
                       <tr>
                           <th className="px-6 py-4">User Info</th>
@@ -319,6 +320,7 @@ export const AdminPanel: React.FC = () => {
                       ))}
                   </tbody>
               </table>
+              </div>
           </div>
       )}
     </div>

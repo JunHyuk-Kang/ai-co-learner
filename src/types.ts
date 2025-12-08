@@ -19,6 +19,11 @@ export interface BotTemplate {
   systemPrompt: string;
   themeColor?: string; // e.g., 'blue', 'purple', 'green'
   baseType?: string; // e.g., 'questioning', 'reflective', 'supportive'
+  primaryCompetencies?: string[]; // 주요 육성 역량
+  secondaryCompetencies?: string[]; // 부차적 육성 역량
+  recommendedFor?: {
+    competencyBelow?: { [key: string]: number }; // 특정 역량이 이 점수 이하일 때 추천
+  };
 }
 
 export interface UserBot {
@@ -28,6 +33,14 @@ export interface UserBot {
   name: string; // User can nickname their bot
   currentLevel: number;
   createdAt: string;
+}
+
+export interface UserBotWithDetails extends UserBot {
+  templateName: string;
+  themeColor?: string;
+  description?: string;
+  primaryCompetencies?: string[];
+  secondaryCompetencies?: string[];
 }
 
 export interface Message {
