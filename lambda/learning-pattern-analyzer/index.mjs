@@ -244,6 +244,112 @@ function getCompetencyLabel(competency) {
   return labels[competency] || competency;
 }
 
+// 봇 선호도 분석
+function analyzeBotPreferences(chatSessions, userBots) {
+  if (chatSessions.length === 0) {
+    return null;
+  }
+
+  // 1. 봇 타입별 사용 빈도 (sessionId로 봇 구분)
+  const botUsageCount = {};
+  const sessionBotMap = {}; // sessionId -> botId 매핑
+
+  chatSessions.forEach(session => {
+    const sessionId = session.sessionId;
+    if (!sessionBotMap[sessionId]) {
+      sessionBotMap[sessionId] = sessionId;
+      botUsageCount[sessionId] = 0;
+    }
+    botUsageCount[sessionId]++;
+  });
+
+  // 2. 대화 길이 선호도 분석
+  const sessionMessageCounts = {};
+  chatSessions.forEach(session => {
+    const sessionId = session.sessionId;
+    sessionMessageCounts[sessionId] = (sessionMessageCounts[sessionId] || 0) + 1;
+  });
+
+  const messageCounts = Object.values(sessionMessageCounts);
+  const avgMessagesPerSession = messageCounts.length > 0
+    ? Math.round(messageCounts.reduce((sum, c) => sum + c, 0) / messageCounts.length)
+    : 0;
+
+  let conversationLengthPreference = 'medium';
+  if (avgMessagesPerSession < 5) {
+    conversationLengthPreference = 'short';
+  } else if (avgMessagesPerSession > 15) {
+    conversationLengthPreference = 'long';
+  }
+
+  // 3. 학습 시간대 패턴 분석
+  const hourDistribution = {};
+  chatSessions.forEach(session => {
+    const hour = new Date(session.timestamp).getHours();
+    hourDistribution[hour] = (hourDistribution[hour] || 0) + 1;
+  });
+
+  const peakHour = Object.entries(hourDistribution)
+    .sort((a, b) => b[1] - a[1])[0];
+
+  let learningTimePattern = 'afternoon';
+  if (peakHour) {
+    const hour = parseInt(peakHour[0]);
+    if (hour >= 6 && hour < 12) {
+      learningTimePattern = 'morning';
+    } else if (hour >= 12 && hour < 18) {
+      learningTimePattern = 'afternoon';
+    } else if (hour >= 18 && hour < 22) {
+      learningTimePattern = 'evening';
+    } else {
+      learningTimePattern = 'night';
+    }
+  }
+
+  // 4. 선호 봇 타입 분석 (user-bots의 templateId 기반)
+  const botTypeCount = {};
+  userBots.forEach(bot => {
+    const baseType = bot.baseType || 'general';
+    botTypeCount[baseType] = (botTypeCount[baseType] || 0) + 1;
+  });
+
+  const preferredBotTypes = Object.entries(botTypeCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([baseType, count]) => ({
+      baseType,
+      usageCount: count,
+      percentage: Math.round((count / userBots.length) * 100)
+    }));
+
+  // 5. 주제 선호도 (봇의 primaryCompetencies 기반)
+  const topicCount = {};
+  userBots.forEach(bot => {
+    if (bot.primaryCompetencies && Array.isArray(bot.primaryCompetencies)) {
+      bot.primaryCompetencies.forEach(comp => {
+        topicCount[comp] = (topicCount[comp] || 0) + 1;
+      });
+    }
+  });
+
+  const preferredTopics = Object.entries(topicCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([competency, frequency]) => ({
+      competency,
+      frequency
+    }));
+
+  return {
+    preferredBotTypes,
+    conversationLengthPreference,
+    avgMessagesPerSession,
+    preferredTopics,
+    learningTimePattern
+  };
+}
+
+
 // 메인 분석 함수
 async function analyzeLearningPattern(userId) {
   try {
@@ -266,7 +372,7 @@ async function analyzeLearningPattern(userId) {
     // 2. 학습 분석 데이터 조회 (최근 30일)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const startTimestamp = thirtyDaysAgo.toISOString();
+    const startTimestamp = Math.floor(thirtyDaysAgo.getTime() / 1000);
 
     const analyticsResponse = await docClient.send(new QueryCommand({
       TableName: 'ai-co-learner-learning-analytics',
@@ -281,6 +387,33 @@ async function analyzeLearningPattern(userId) {
     }));
 
     const analytics = analyticsResponse.Items || [];
+
+    // 2-1. chat-sessions 데이터 조회 (최근 30일)
+    const chatSessionsResponse = await docClient.send(new QueryCommand({
+      TableName: 'ai-co-learner-chat-sessions',
+      IndexName: 'userId-timestamp-index',
+      KeyConditionExpression: 'userId = :userId AND #timestamp > :start',
+      ExpressionAttributeNames: {
+        '#timestamp': 'timestamp',
+      },
+      ExpressionAttributeValues: {
+        ':userId': userId,
+        ':start': startTimestamp,
+      },
+    }));
+
+    const chatSessions = chatSessionsResponse.Items || [];
+
+    // 2-2. user-bots 데이터 조회
+    const userBotsResponse = await docClient.send(new QueryCommand({
+      TableName: 'ai-co-learner-user-bots',
+      KeyConditionExpression: 'userId = :userId',
+      ExpressionAttributeValues: {
+        ':userId': userId,
+      },
+    }));
+
+    const userBots = userBotsResponse.Items || [];
 
     // 3. 역량 히스토리 계산 (일별 평균)
     const dailyAverages = {};
@@ -325,6 +458,11 @@ async function analyzeLearningPattern(userId) {
       ? analyzeGrowthTrend(competencyHistory)
       : null;
 
+    // 4-1. 봇 선호도 분석
+    const botPreferences = chatSessions.length > 0
+      ? analyzeBotPreferences(chatSessions, userBots)
+      : null;
+
     // 5. 인사이트 생성
     const insights = (competencyAnalysis && activityAnalysis && growthAnalysis)
       ? generateInsights(competencyAnalysis, activityAnalysis, growthAnalysis)
@@ -336,6 +474,7 @@ async function analyzeLearningPattern(userId) {
       competencyAnalysis,
       activityAnalysis,
       growthAnalysis,
+      botPreferences,
       insights,
       dataAvailable: analytics.length > 0,
     };
@@ -354,7 +493,7 @@ export const handler = async (event) => {
     if (event.httpMethod) {
       const pathParts = event.path.split('/');
       const userId = pathParts[pathParts.indexOf('analysis') + 1] ||
-                     pathParts[pathParts.length - 1];
+        pathParts[pathParts.length - 1];
 
       if (!userId || userId === 'analysis') {
         return {
