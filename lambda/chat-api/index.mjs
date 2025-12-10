@@ -74,6 +74,11 @@ export const handler = async (event) => {
       return await createUserBot(event, headers);
     }
 
+    // POST /bots/delete - 사용자 봇 삭제
+    if (method === 'POST' && path.includes('/bots/delete')) {
+      return await deleteUserBot(event, headers);
+    }
+
     // GET /bots/recommended/{userId} - 추천 봇 조회
     if (method === 'GET' && path.includes('/bots/recommended/')) {
       return await getRecommendedTemplates(event, headers);
@@ -492,6 +497,65 @@ async function createUserBot(event, headers) {
       description: template.description || ''
     })
   };
+}
+
+// 사용자 봇 삭제
+async function deleteUserBot(event, headers) {
+  const body = JSON.parse(event.body || "{}");
+  const { userId, botId } = body;
+
+  if (!userId || !botId) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: "Missing required fields: userId, botId" })
+    };
+  }
+
+  try {
+    // 봇이 존재하는지 확인
+    const scanResult = await dynamoClient.send(new ScanCommand({
+      TableName: USER_BOTS_TABLE,
+      FilterExpression: "userId = :userId AND botId = :botId",
+      ExpressionAttributeValues: {
+        ":userId": userId,
+        ":botId": botId
+      }
+    }));
+
+    if (!scanResult.Items || scanResult.Items.length === 0) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: "Bot not found" })
+      };
+    }
+
+    // 봇 삭제
+    await dynamoClient.send(new DeleteCommand({
+      TableName: USER_BOTS_TABLE,
+      Key: {
+        userId,
+        botId
+      }
+    }));
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        message: "Bot deleted successfully",
+        botId
+      })
+    };
+  } catch (error) {
+    console.error("Delete user bot error:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
 }
 
 // 사용자 프로필 조회

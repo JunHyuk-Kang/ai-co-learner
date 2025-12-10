@@ -18,7 +18,11 @@
       ],
       "Resource": [
         "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-user-competencies",
-        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-learning-analytics"
+        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-learning-analytics",
+        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-chat-sessions",
+        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-chat-sessions/index/*",
+        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-user-bots",
+        "arn:aws:dynamodb:ap-northeast-2:*:table/ai-co-learner-user-bots/index/*"
       ]
     }
   ]

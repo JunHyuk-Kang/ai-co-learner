@@ -47,7 +47,11 @@ function analyzeLearningActivity(analytics) {
   let avgMessageLength = 0;
 
   analytics.forEach(item => {
-    const date = new Date(item.timestamp);
+    // timestamp가 숫자(초)인 경우 밀리초로 변환, 문자열이면 그대로 사용
+    const timestampMs = typeof item.timestamp === 'number'
+      ? item.timestamp * 1000
+      : item.timestamp;
+    const date = new Date(timestampMs);
     const hour = date.getHours();
     const dayOfWeek = date.getDay(); // 0=일요일, 6=토요일
 
@@ -285,7 +289,11 @@ function analyzeBotPreferences(chatSessions, userBots) {
   // 3. 학습 시간대 패턴 분석
   const hourDistribution = {};
   chatSessions.forEach(session => {
-    const hour = new Date(session.timestamp).getHours();
+    // timestamp가 숫자(밀리초)인 경우와 문자열인 경우 모두 처리
+    const timestampMs = typeof session.timestamp === 'number'
+      ? session.timestamp
+      : new Date(session.timestamp).getTime();
+    const hour = new Date(timestampMs).getHours();
     hourDistribution[hour] = (hourDistribution[hour] || 0) + 1;
   });
 
@@ -418,7 +426,11 @@ async function analyzeLearningPattern(userId) {
     // 3. 역량 히스토리 계산 (일별 평균)
     const dailyAverages = {};
     analytics.forEach(item => {
-      const date = item.timestamp.split('T')[0];
+      // timestamp가 숫자인 경우와 문자열인 경우 모두 처리
+      const timestamp = typeof item.timestamp === 'number'
+        ? new Date(item.timestamp * 1000).toISOString()
+        : item.timestamp;
+      const date = timestamp.split('T')[0];
       const scores = item.competencyScores || {};
 
       if (!dailyAverages[date]) {
