@@ -1,4 +1,4 @@
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, ScanCommand, DeleteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
@@ -162,8 +162,13 @@ export const handler = async (event) => {
       return await updateUserProfile(event, headers);
     }
 
+    // POST /chat/stream - 스트리밍 채팅 메시지 전송
+    if (method === 'POST' && path.includes('/chat/stream')) {
+      return await sendChatMessageStream(event, headers);
+    }
+
     // POST /chat - 채팅 메시지 전송 (기존 기능)
-    if (method === 'POST' && path.includes('/chat')) {
+    if (method === 'POST' && path.includes('/chat') && !path.includes('/stream')) {
       return await sendChatMessage(event, headers);
     }
 
@@ -319,6 +324,180 @@ async function sendChatMessage(event, headers) {
       }
     })
   };
+}
+
+// 스트리밍 채팅 메시지 전송
+async function sendChatMessageStream(event, headers) {
+  const body = JSON.parse(event.body || "{}");
+  const { userId, sessionId, message } = body;
+
+  // 입력 검증
+  if (!userId || !sessionId || !message) {
+    return {
+      statusCode: 400,
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        error: "Missing required fields: userId, sessionId, message"
+      })
+    };
+  }
+
+  try {
+    // 1. 템플릿 및 봇 정보 조회 (기존 로직 재사용)
+    const allTemplates = await dynamoClient.send(new ScanCommand({
+      TableName: TEMPLATES_TABLE
+    }));
+
+    const templateMap = {};
+    (allTemplates.Items || []).forEach(t => {
+      templateMap[t.templateId] = t.systemPrompt;
+    });
+
+    const allUserBots = await dynamoClient.send(new ScanCommand({
+      TableName: USER_BOTS_TABLE,
+      FilterExpression: "userId = :userId",
+      ExpressionAttributeValues: {
+        ":userId": userId
+      }
+    }));
+
+    const userBot = (allUserBots.Items || []).find(bot => bot.botId === sessionId);
+
+    if (!userBot || !userBot.templateId) {
+      return {
+        statusCode: 404,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ error: "Bot not found" })
+      };
+    }
+
+    const systemPrompt = templateMap[userBot.templateId];
+
+    if (!systemPrompt) {
+      return {
+        statusCode: 404,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ error: "Template not found for this bot" })
+      };
+    }
+
+    // 2. 대화 히스토리 조회
+    const historyResponse = await dynamoClient.send(new QueryCommand({
+      TableName: SESSIONS_TABLE,
+      KeyConditionExpression: "sessionId = :sessionId",
+      ExpressionAttributeValues: {
+        ":sessionId": sessionId
+      },
+      Limit: 10,
+      ScanIndexForward: false
+    }));
+
+    const conversationHistory = (historyResponse.Items || [])
+      .reverse()
+      .map(item => ({
+        user: item.userMessage,
+        assistant: item.aiMessage
+      }));
+
+    // 3. Claude용 메시지 생성
+    const messages = buildClaudeMessages(message, conversationHistory);
+
+    console.log("Starting Bedrock streaming...");
+
+    // 4. Bedrock 스트리밍 호출
+    const streamCommand = new InvokeModelWithResponseStreamCommand({
+      modelId: MODEL_ID,
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify({
+        anthropic_version: "bedrock-2023-05-31",
+        max_tokens: 500,
+        temperature: 0.7,
+        system: systemPrompt,
+        messages: messages
+      })
+    });
+
+    const response = await bedrockClient.send(streamCommand);
+
+    // 5. 스트림 처리 및 전체 응답 수집
+    let fullAiMessage = "";
+    const chunks = [];
+
+    for await (const event of response.body) {
+      if (event.chunk) {
+        const chunk = JSON.parse(new TextDecoder().decode(event.chunk.bytes));
+
+        if (chunk.type === 'content_block_delta') {
+          const text = chunk.delta?.text || '';
+          fullAiMessage += text;
+          chunks.push({
+            type: 'chunk',
+            text: text
+          });
+        }
+      }
+    }
+
+    console.log("Streaming completed. Full message:", fullAiMessage);
+
+    // 6. DynamoDB에 메시지 저장 (스트림 완료 후)
+    const timestamp = Date.now();
+    const messageId = `${sessionId}-${timestamp}`;
+    const TTL_30_DAYS = 30 * 24 * 60 * 60;
+
+    await dynamoClient.send(new PutCommand({
+      TableName: SESSIONS_TABLE,
+      Item: {
+        sessionId,
+        timestamp,
+        messageId,
+        userId,
+        userMessage: message,
+        aiMessage: fullAiMessage,
+        createdAt: new Date().toISOString(),
+        expiresAt: Math.floor(Date.now() / 1000) + TTL_30_DAYS
+      }
+    }));
+
+    // 7. 스트리밍 응답 반환 (newline-delimited JSON)
+    const streamResponse = chunks.map(c => JSON.stringify(c)).join('\n') +
+      '\n' + JSON.stringify({ type: 'done', messageId, timestamp });
+
+    return {
+      statusCode: 200,
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-ndjson', // Newline-delimited JSON
+        'Transfer-Encoding': 'chunked',
+        'X-Accel-Buffering': 'no' // Disable proxy buffering
+      },
+      body: streamResponse
+    };
+
+  } catch (error) {
+    console.error("Streaming error:", error);
+    return {
+      statusCode: 500,
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        error: error.message,
+        type: error.name
+      })
+    };
+  }
 }
 
 // 세션 조회

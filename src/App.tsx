@@ -21,6 +21,7 @@ const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase').then(module => 
 const AdminPanel = lazy(() => import('./pages/AdminPanel').then(module => ({ default: module.AdminPanel })));
 const InitialAssessment = lazy(() => import('./pages/InitialAssessment').then(module => ({ default: module.InitialAssessment })));
 const DailyQuests = lazy(() => import('./pages/DailyQuests'));
+const UserProfile = lazy(() => import('./pages/UserProfile').then(module => ({ default: module.UserProfile })));
 
 // Loading component
 const LoadingFallback = () => (
@@ -113,6 +114,14 @@ const AppRoutes = () => {
             <ProtectedRoute>
               <PageTransition>
                 <DailyQuests />
+              </PageTransition>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <PageTransition>
+                <UserProfile />
               </PageTransition>
             </ProtectedRoute>
           } />

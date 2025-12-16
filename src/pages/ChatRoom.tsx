@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ChatService } from '../services/awsBackend';
 import { ChatSession, Message } from '../types';
 import { ChatBubble } from '../components/chat/ChatBubble';
+import { StreamingIndicator } from '../components/chat/StreamingIndicator';
 import { Button } from '../components/ui/Button';
 import { Send, MoreHorizontal, AlertCircle, Square, Book } from 'lucide-react';
 import { useBots } from '../contexts/BotContext';
@@ -14,6 +15,7 @@ export const ChatRoom: React.FC = () => {
   const { bots } = useBots();
   const [session, setSession] = useState<ChatSession | null>(null);
   const [input, setInput] = useState('');
+  const [streamError, setStreamError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Find the current bot info
@@ -59,6 +61,23 @@ export const ChatRoom: React.FC = () => {
     },
     onError: (error) => {
       console.error("Streaming error:", error);
+      setStreamError(error.message || 'Failed to stream message');
+      // Show error message in chat
+      setSession(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          messages: [
+            ...prev.messages,
+            {
+              id: `error-${Date.now()}`,
+              sender: 'ai',
+              text: `⚠️ Error: ${error.message || 'Failed to get response'}. Please try again.`,
+              timestamp: Date.now()
+            }
+          ]
+        };
+      });
     }
   });
 
@@ -143,6 +162,22 @@ export const ChatRoom: React.FC = () => {
             </p>
           </div>
 
+          {streamError && (
+            <div className="bg-error/10 border border-error/30 p-3 rounded-lg mb-4 flex items-start gap-3">
+              <AlertCircle className="text-error shrink-0 mt-0.5" size={16} />
+              <div>
+                <p className="text-xs text-error font-bold">Stream Error</p>
+                <p className="text-xs text-error/80 mt-1">{streamError}</p>
+                <button
+                  onClick={() => setStreamError(null)}
+                  className="text-xs text-error/60 hover:text-error mt-1 underline"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
           {session.messages.map((msg) => (
             <ChatBubble
               key={msg.id}
@@ -152,9 +187,7 @@ export const ChatRoom: React.FC = () => {
           ))}
 
           {isStreaming && session.messages[session.messages.length - 1]?.sender === 'user' && (
-            <div className="flex items-center gap-2 text-gray-500 text-xs ml-12 animate-pulse">
-              Thinking...
-            </div>
+            <StreamingIndicator agentName={currentBot?.templateName || currentBot?.name || 'AI'} />
           )}
           <div ref={messagesEndRef} />
         </div>
@@ -174,7 +207,13 @@ export const ChatRoom: React.FC = () => {
           {isStreaming ? (
             <button
               onClick={stopStream}
-              className="absolute right-2 bottom-2 p-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors z-10"
+              className="absolute right-2 bottom-2 p-2 rounded-lg transition-colors z-10"
+              style={{
+                backgroundColor: '#EF4444',
+                color: '#FFFFFF'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#DC2626'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#EF4444'}
             >
               <Square size={18} fill="currentColor" />
             </button>

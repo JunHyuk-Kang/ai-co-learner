@@ -1,0 +1,256 @@
+{
+  "version": "1.0",
+  "tasks": [
+    {
+      "id": "task-002",
+      "type": "feature_implementation",
+      "priority": "high",
+      "title": "Add error handling and retry logic to Lambda functions",
+      "description": "Lambda functions (message-batch-analyzer, competency-aggregator, etc.) lack comprehensive error handling. If Bedrock API calls fail or DynamoDB operations timeout, there's no retry mechanism. Add exponential backoff retries for transient failures, better error logging, and graceful degradation.",
+      "acceptanceCriteria": [
+        "All Lambda functions have try-catch blocks with detailed error logging",
+        "Bedrock API calls implement exponential backoff retry (3 attempts)",
+        "DynamoDB operations have timeout and retry handling",
+        "Failed batches are logged for manual review",
+        "CloudWatch alerts configured for repeated failures"
+      ],
+      "status": "in_progress",
+      "createdAt": "2025-12-16T04:55:00.908Z",
+      "updatedAt": "2025-12-16T06:30:45.024Z"
+    },
+    {
+      "id": "task-003",
+      "type": "feature_implementation",
+      "priority": "high",
+      "title": "Implement API rate limiting and input validation",
+      "description": "The API Gateway has no rate limiting, making it vulnerable to abuse. Input validation in Lambda functions is minimal (only checking for missing fields). Add API Gateway rate limiting, request throttling, and comprehensive input validation including message length limits, XSS prevention, and SQL injection protection.",
+      "acceptanceCriteria": [
+        "API Gateway implements per-user rate limiting (100 requests/minute)",
+        "Input validation checks message length (max 5000 chars)",
+        "Sanitize all user inputs to prevent XSS attacks",
+        "Validate all IDs match expected UUID/timestamp patterns",
+        "Return 429 status code with retry-after header when rate limited",
+        "Log all rate limit violations for monitoring"
+      ],
+      "status": "in_progress",
+      "createdAt": "2025-12-16T04:55:00.908Z",
+      "updatedAt": "2025-12-16T05:11:35.499Z"
+    },
+    {
+      "id": "task-004",
+      "type": "feature_implementation",
+      "priority": "medium",
+      "title": "Fix competency aggregator to append historical scores instead of overwriting",
+      "description": "In competency-aggregator/index.mjs:136-149, the saveCompetencies function creates a new historicalScores array with only one entry, overwriting previous history. This defeats the purpose of tracking historical trends. Fix to append to existing historicalScores array and maintain proper history.",
+      "acceptanceCriteria": [
+        "Query existing competency record before updating",
+        "Append new score to existing historicalScores array",
+        "Limit historicalScores to last 365 entries (1 year)",
+        "Properly calculate trends based on multiple historical points",
+        "Test with users who have existing competency data"
+      ],
+      "status": "in_progress",
+      "createdAt": "2025-12-16T04:55:00.908Z",
+      "updatedAt": "2025-12-16T05:11:18.256Z"
+    },
+    {
+      "id": "task-005",
+      "type": "feature_implementation",
+      "priority": "medium",
+      "title": "Optimize DynamoDB queries - Replace Scan with Query/GSI",
+      "description": "Multiple Lambda functions use Scan operations which are expensive and slow (getUserBots, getTemplates, getAllUsers in competency-aggregator). These should use Query with proper indexes or GSI. For templates (which don't change often), implement caching.",
+      "acceptanceCriteria": [
+        "Create GSI on user-bots table for userId queries",
+        "Implement Lambda caching for bot templates (5 min TTL)",
+        "Replace Scan with Query where partition key is available",
+        "Add projection expressions to limit data transfer",
+        "Measure and document query performance improvements"
+      ],
+      "status": "in_progress",
+      "createdAt": "2025-12-16T04:55:00.908Z",
+      "updatedAt": "2025-12-16T05:11:21.223Z"
+    },
+    {
+      "id": "task-006",
+      "type": "feature_implementation",
+      "priority": "medium",
+      "title": "Implement proper session management and token refresh",
+      "description": "AuthContext checks token validity every 5 minutes but doesn't actually refresh expired tokens - it just logs out the user. Implement proper token refresh using Cognito's refresh token functionality so users aren't logged out during active sessions.",
+      "acceptanceCriteria": [
+        "Automatically refresh access tokens using refresh token before expiry",
+        "Handle refresh token failures gracefully",
+        "Maintain user session during token refresh",
+        "Add loading state during token refresh",
+        "Test with sessions lasting multiple hours"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-007",
+      "type": "feature_implementation",
+      "priority": "medium",
+      "title": "Add pagination to chat history and analytics queries",
+      "description": "Chat history query in Lambda only limits to 10 messages (line 253 in chat-api/index.mjs) but doesn't support pagination. As conversations grow, users need to load older messages. Implement pagination for chat sessions, analytics history, and achievement lists.",
+      "acceptanceCriteria": [
+        "Chat session API supports pagination with lastEvaluatedKey",
+        "Frontend chat loads older messages on scroll",
+        "Analytics history supports date range pagination",
+        "Implement infinite scroll for long lists",
+        "Add loading indicators during pagination"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-008",
+      "type": "feature_implementation",
+      "priority": "medium",
+      "title": "Fix potential race condition in batch analyzer",
+      "description": "The message-batch-analyzer marks messages as 'analyzed' but there's a race condition if the function runs twice simultaneously. Two instances could process the same messages. Implement distributed locking or use DynamoDB conditional writes to prevent duplicate processing.",
+      "acceptanceCriteria": [
+        "Implement DynamoDB conditional write with 'analyzed' attribute",
+        "Handle ConditionalCheckFailedException gracefully",
+        "Add unique batch ID for tracking",
+        "Log when messages are skipped due to race condition",
+        "Test with concurrent Lambda executions"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-009",
+      "type": "feature_implementation",
+      "priority": "low",
+      "title": "Add comprehensive loading states and error boundaries",
+      "description": "Frontend components lack proper loading states and error boundaries. When API calls fail, users see undefined behavior. Add React Error Boundaries, skeleton loaders, and graceful error handling throughout the application.",
+      "acceptanceCriteria": [
+        "Implement Error Boundary component wrapping all routes",
+        "Add skeleton loaders for Dashboard, ChatRoom, and DailyQuests",
+        "Show user-friendly error messages for API failures",
+        "Add retry buttons on error states",
+        "Implement offline detection and messaging"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-010",
+      "type": "feature_implementation",
+      "priority": "low",
+      "title": "Implement proper TypeScript types and remove 'any' usage",
+      "description": "Multiple files use 'any' type (awsBackend.ts lines 22, 41, 114, etc.) which defeats TypeScript's purpose. Create proper interfaces for all API responses, DynamoDB items, and Lambda payloads. Enable strict TypeScript mode.",
+      "acceptanceCriteria": [
+        "Remove all 'any' types from src/ directory",
+        "Create shared types file for API responses",
+        "Enable TypeScript strict mode in tsconfig.json",
+        "Add type guards for runtime type checking",
+        "No TypeScript errors in build"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-011",
+      "type": "feature_implementation",
+      "priority": "high",
+      "title": "Add monitoring and alerting for Lambda failures",
+      "description": "There's no monitoring for Lambda function failures, Bedrock API errors, or DynamoDB throttling. Set up CloudWatch dashboards, alarms for error rates, and SNS notifications for critical failures.",
+      "acceptanceCriteria": [
+        "CloudWatch dashboard showing all Lambda metrics",
+        "Alarms for Lambda error rate > 5%",
+        "Alarms for Bedrock API throttling",
+        "SNS topic for critical alerts",
+        "Weekly summary email of system health"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-012",
+      "type": "feature_implementation",
+      "priority": "medium",
+      "title": "Optimize bundle size and implement code splitting",
+      "description": "The React app loads all pages upfront (lazy loading exists but all dependencies are bundled). Dashboard loads Recharts library even when charts aren't visible. Implement dynamic imports, route-based code splitting, and analyze bundle size.",
+      "acceptanceCriteria": [
+        "Route-based code splitting for all pages",
+        "Dynamic import for Recharts library",
+        "Bundle size reduced by at least 30%",
+        "Lighthouse performance score > 90",
+        "Analyze and document bundle composition"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-013",
+      "type": "feature_implementation",
+      "priority": "low",
+      "title": "Add comprehensive test coverage",
+      "description": "The project has no tests - no unit tests, integration tests, or E2E tests. Add Jest for unit tests, React Testing Library for component tests, and Playwright for E2E tests. Aim for 80% coverage on critical paths.",
+      "acceptanceCriteria": [
+        "Unit tests for all service functions (awsBackend.ts)",
+        "Component tests for Dashboard, ChatRoom, InitialAssessment",
+        "Integration tests for authentication flow",
+        "E2E tests for critical user journeys",
+        "Code coverage > 80% on src/ directory"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-014",
+      "type": "feature_implementation",
+      "priority": "high",
+      "title": "Implement environment-based configuration",
+      "description": "Lambda functions hardcode table names and have fallbacks to defaults (e.g., process.env.SESSIONS_TABLE || 'ai-co-learner-chat-sessions'). This is risky for multi-environment setups. Use AWS Systems Manager Parameter Store or environment variables properly.",
+      "acceptanceCriteria": [
+        "All table names from environment variables without fallbacks",
+        "Separate dev/staging/prod environments",
+        "Environment-specific API endpoints",
+        "Configuration validation on Lambda cold start",
+        "Document all required environment variables"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    },
+    {
+      "id": "task-015",
+      "type": "feature_implementation",
+      "priority": "medium",
+      "title": "Add data validation and sanitization in Lambda functions",
+      "description": "Lambda functions trust all input data without validation. Add schema validation using libraries like Joi or Zod. Validate userId format, message length, assessment answers, etc. Prevent injection attacks and malformed data from breaking the system.",
+      "acceptanceCriteria": [
+        "Schema validation for all API endpoints",
+        "Validate userId is valid UUID",
+        "Validate message length and content",
+        "Sanitize HTML from user inputs",
+        "Return 400 with validation errors",
+        "Log validation failures for monitoring"
+      ],
+      "status": "pending",
+      "createdAt": "2025-12-16T04:55:00.908Z"
+    }
+  ],
+  "completed": [
+    {
+      "id": "task-001",
+      "type": "feature_implementation",
+      "priority": "high",
+      "title": "Fix streaming chat implementation - Replace mock with real Bedrock streaming",
+      "description": "Currently the chat uses a simulated streaming service (ChatService.streamMessage in awsBackend.ts) that splits text into chunks. This should be replaced with real Bedrock streaming using InvokeModelWithResponseStream. The Lambda chat-api needs to support streaming responses, and the frontend useChatStream hook needs to use fetch with ReadableStream instead of the mock implementation.",
+      "acceptanceCriteria": [
+        "Lambda chat-api supports streaming responses via InvokeModelWithResponseStream",
+        "Frontend uses fetch with ReadableStream to receive chunks in real-time",
+        "Remove mock ChatService.streamMessage implementation",
+        "Streaming works smoothly without latency",
+        "User can stop streaming mid-response"
+      ],
+      "status": "completed",
+      "createdAt": "2025-12-16T04:55:00.908Z",
+      "updatedAt": "2025-12-16T06:30:45.009Z"
+    }
+  ],
+  "current": "task-002",
+  "lastUpdated": "2025-12-16T06:30:45.024Z"
+}

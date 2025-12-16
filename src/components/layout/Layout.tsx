@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBots } from '../../contexts/BotContext';
 import { Role, UserBot } from '../../types';
-import { LayoutDashboard, MessageSquare, LogOut, Shield, Menu, X, Target } from 'lucide-react';
+import { LayoutDashboard, MessageSquare, LogOut, Shield, Menu, X, Target, User as UserIcon } from 'lucide-react';
 import { Button } from '../ui/Button';
 
 interface LayoutProps {
@@ -101,19 +101,29 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </nav>
 
         <div className="p-4 border-t border-border">
-          <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold">
-              {user.name.charAt(0)}
+          <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)}>
+            <div className="flex items-center gap-3 mb-3 px-2 py-2 rounded-lg hover:bg-surface transition-colors cursor-pointer">
+              <div className="w-8 h-8 rounded-full bg-gray-700 flex items-center justify-center text-xs font-bold">
+                {user.name.charAt(0)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user.name}</p>
+                <p className="text-xs text-gray-500 truncate">Level {user.level}</p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user.name}</p>
-              <p className="text-xs text-gray-500 truncate">Level {user.level}</p>
-            </div>
+          </Link>
+          <div className="space-y-1">
+            <Link to="/profile" onClick={() => setIsMobileMenuOpen(false)}>
+              <Button variant="ghost" size="sm" className="w-full justify-start text-gray-400 hover:text-gray-200">
+                <UserIcon size={16} className="mr-2" />
+                프로필
+              </Button>
+            </Link>
+            <Button variant="ghost" size="sm" className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-900/20" onClick={handleLogout}>
+              <LogOut size={16} className="mr-2" />
+              로그아웃
+            </Button>
           </div>
-          <Button variant="ghost" size="sm" className="w-full justify-start text-red-400 hover:text-red-300 hover:bg-red-900/20" onClick={handleLogout}>
-            <LogOut size={16} className="mr-2" />
-            로그아웃
-          </Button>
         </div>
       </aside>
 

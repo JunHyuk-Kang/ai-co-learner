@@ -1,0 +1,196 @@
+{
+  "type": "design_verification",
+  "taskId": "task-001",
+  "platform": "web",
+  "timestamp": "2025-12-16T06:30:45.002Z",
+  "verified": false,
+  "matchPercentage": 0,
+  "totalChecked": 23,
+  "discrepancies": [
+    {
+      "type": "color",
+      "tokenName": "primary",
+      "expectedValue": "#3B82F6",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "secondary",
+      "expectedValue": "#8B5CF6",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "background",
+      "expectedValue": "#FFFFFF",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "background-secondary",
+      "expectedValue": "#F3F4F6",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "text-primary",
+      "expectedValue": "#111827",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "text-secondary",
+      "expectedValue": "#6B7280",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "success",
+      "expectedValue": "#10B981",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "error",
+      "expectedValue": "#EF4444",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "warning",
+      "expectedValue": "#F59E0B",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "streaming-indicator",
+      "expectedValue": "#3B82F6",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "abort-button",
+      "expectedValue": "#EF4444",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "message-ai",
+      "expectedValue": "#F3F4F6",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "color",
+      "tokenName": "message-user",
+      "expectedValue": "#DBEAFE",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "spacing",
+      "tokenName": "xs",
+      "expectedValue": "4px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "spacing",
+      "tokenName": "sm",
+      "expectedValue": "8px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "spacing",
+      "tokenName": "md",
+      "expectedValue": "16px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "spacing",
+      "tokenName": "lg",
+      "expectedValue": "24px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "spacing",
+      "tokenName": "xl",
+      "expectedValue": "32px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "spacing",
+      "tokenName": "xxl",
+      "expectedValue": "48px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "borderRadius",
+      "tokenName": "sm",
+      "expectedValue": "4px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "borderRadius",
+      "tokenName": "md",
+      "expectedValue": "8px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "borderRadius",
+      "tokenName": "lg",
+      "expectedValue": "16px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    },
+    {
+      "type": "borderRadius",
+      "tokenName": "full",
+      "expectedValue": "9999px",
+      "actualValue": "NOT_FOUND",
+      "difference": "Token not found in CSS",
+      "severity": "warning"
+    }
+  ],
+  "summary": "## Design Verification Report\n\n**Status:** NEEDS ATTENTION\n**Match Rate:** 0%\n**Total Tokens Checked:** 23\n\n### Discrepancies Found (23)\n\n#### Color (13)\n\n| Token | Expected | Actual | Difference |\n|-------|----------|--------|------------|\n| primary | #3B82F6 | NOT_FOUND | Token not found in CSS |\n| secondary | #8B5CF6 | NOT_FOUND | Token not found in CSS |\n| background | #FFFFFF | NOT_FOUND | Token not found in CSS |\n| background-secondary | #F3F4F6 | NOT_FOUND | Token not found in CSS |\n| text-primary | #111827 | NOT_FOUND | Token not found in CSS |\n| text-secondary | #6B7280 | NOT_FOUND | Token not found in CSS |\n| success | #10B981 | NOT_FOUND | Token not found in CSS |\n| error | #EF4444 | NOT_FOUND | Token not found in CSS |\n| warning | #F59E0B | NOT_FOUND | Token not found in CSS |\n| streaming-indicator | #3B82F6 | NOT_FOUND | Token not found in CSS |\n| abort-button | #EF4444 | NOT_FOUND | Token not found in CSS |\n| message-ai | #F3F4F6 | NOT_FOUND | Token not found in CSS |\n| message-user | #DBEAFE | NOT_FOUND | Token not found in CSS |\n\n#### Spacing (6)\n\n| Token | Expected | Actual | Difference |\n|-------|----------|--------|------------|\n| xs | 4px | NOT_FOUND | Token not found in CSS |\n| sm | 8px | NOT_FOUND | Token not found in CSS |\n| md | 16px | NOT_FOUND | Token not found in CSS |\n| lg | 24px | NOT_FOUND | Token not found in CSS |\n| xl | 32px | NOT_FOUND | Token not found in CSS |\n| xxl | 48px | NOT_FOUND | Token not found in CSS |\n\n#### BorderRadius (4)\n\n| Token | Expected | Actual | Difference |\n|-------|----------|--------|------------|\n| sm | 4px | NOT_FOUND | Token not found in CSS |\n| md | 8px | NOT_FOUND | Token not found in CSS |\n| lg | 16px | NOT_FOUND | Token not found in CSS |\n| full | 9999px | NOT_FOUND | Token not found in CSS |\n"
+}

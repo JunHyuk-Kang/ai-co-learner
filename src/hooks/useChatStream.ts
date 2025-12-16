@@ -10,26 +10,39 @@ interface UseChatStreamProps {
 export const useChatStream = ({ onChunk, onComplete, onError }: UseChatStreamProps) => {
     const [isStreaming, setIsStreaming] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const fullMessageRef = useRef<string>('');
 
     const streamMessage = useCallback(async (botId: string, message: string) => {
         setIsStreaming(true);
         abortControllerRef.current = new AbortController();
+        fullMessageRef.current = '';
 
         try {
-            // In a real implementation, this would use fetch with a ReadableStream
-            // For now, we use the simulated streaming service
-            await ChatService.streamMessage(botId, message, (chunk) => {
-                if (abortControllerRef.current?.signal.aborted) return;
-                onChunk(chunk);
-            });
+            await ChatService.streamMessage(
+                botId,
+                message,
+                (chunk) => {
+                    if (abortControllerRef.current?.signal.aborted) return;
+                    fullMessageRef.current += chunk;
+                    onChunk(chunk);
+                },
+                abortControllerRef.current.signal
+            );
 
-            onComplete(''); // The full message is built up by chunks in the parent
-        } catch (error) {
-            if (abortControllerRef.current?.signal.aborted) return;
+            if (!abortControllerRef.current?.signal.aborted) {
+                onComplete(fullMessageRef.current);
+            }
+        } catch (error: any) {
+            if (error.name === 'AbortError' || abortControllerRef.current?.signal.aborted) {
+                console.log('Stream cancelled by user');
+                return;
+            }
+            console.error('Stream error:', error);
             onError(error);
         } finally {
             setIsStreaming(false);
             abortControllerRef.current = null;
+            fullMessageRef.current = '';
         }
     }, [onChunk, onComplete, onError]);
 

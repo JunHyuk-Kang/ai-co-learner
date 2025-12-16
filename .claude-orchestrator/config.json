@@ -1,0 +1,14 @@
+{
+  "project": {
+    "name": "ai-co-learner",
+    "path": "C:\\Users\\Juny\\Desktop\\synnex\\ai-co-learner"
+  },
+  "scope": "전체적으로 잘짜여진 코드인지, 버그는 없는지, 효율적으로 짜져있는지, 프로젝트 목적에 맞게  된건지 확인하고 싶어",
+  "goals": [
+    "scope의 목적과 같아"
+  ],
+  "platform": "web",
+  "maxTasks": 5,
+  "continuous": true,
+  "initialized": "2025-12-16T04:53:10.447Z"
+}

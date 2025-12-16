@@ -124,18 +124,78 @@ export const ChatService = {
     }
   },
 
-  // Simulated streaming for Phase 3
-  streamMessage: async (_botId: string, _userText: string, onChunk: (chunk: string) => void): Promise<void> => {
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+  // Real Bedrock streaming implementation
+  streamMessage: async (
+    botId: string,
+    userText: string,
+    onChunk: (chunk: string) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    try {
+      const session = await fetchAuthSession();
+      const userId = session.userSub;
 
-    // Mock response
-    const fullResponse = "This is a simulated streaming response. In Phase 3, we are implementing the UI to handle real-time text generation. This makes the AI feel more alive and responsive!";
-    const chunks = fullResponse.split(' ');
+      const API_URL = import.meta.env.VITE_API_GATEWAY_URL;
+      const response = await fetch(`${API_URL}/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          sessionId: botId,
+          message: userText,
+        }),
+        signal, // Pass AbortSignal for cancellation
+      });
 
-    for (const chunk of chunks) {
-      await new Promise(resolve => setTimeout(resolve, 100)); // Simulate typing speed
-      onChunk(chunk + ' ');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('Response body is null');
+      }
+
+      // Parse newline-delimited JSON stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+
+        // Keep the last incomplete line in buffer
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const chunk = JSON.parse(line);
+
+              if (chunk.type === 'chunk' && chunk.text) {
+                onChunk(chunk.text);
+              } else if (chunk.type === 'done') {
+                console.log('Stream completed:', chunk.messageId);
+              }
+            } catch (parseError) {
+              console.error('Failed to parse chunk:', line, parseError);
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Stream aborted by user');
+        return;
+      }
+      console.error('Failed to stream message:', error);
+      throw error;
     }
   },
 };
