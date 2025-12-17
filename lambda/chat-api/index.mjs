@@ -882,7 +882,16 @@ function buildClaudeMessages(userMessage, conversationHistory) {
 // 템플릿 생성
 async function createTemplate(event, headers) {
   const body = JSON.parse(event.body || "{}");
-  const { name, description, systemPrompt, themeColor } = body;
+  const {
+    name,
+    description,
+    systemPrompt,
+    themeColor,
+    baseType,
+    primaryCompetencies,
+    secondaryCompetencies,
+    recommendedFor
+  } = body;
 
   if (!name || !systemPrompt) {
     return {
@@ -902,7 +911,12 @@ async function createTemplate(event, headers) {
       description: description || '',
       systemPrompt,
       themeColor: themeColor || 'blue',
-      createdAt: new Date().toISOString()
+      baseType: baseType || 'coaching',
+      primaryCompetencies: primaryCompetencies || [],
+      secondaryCompetencies: secondaryCompetencies || [],
+      recommendedFor: recommendedFor || {},
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     }
   }));
 
@@ -914,7 +928,11 @@ async function createTemplate(event, headers) {
       name,
       description,
       systemPrompt,
-      themeColor
+      themeColor,
+      baseType,
+      primaryCompetencies,
+      secondaryCompetencies,
+      recommendedFor
     })
   };
 }
@@ -922,7 +940,17 @@ async function createTemplate(event, headers) {
 // 템플릿 수정
 async function updateTemplate(event, headers) {
   const body = JSON.parse(event.body || "{}");
-  const { templateId, name, description, systemPrompt, themeColor } = body;
+  const {
+    templateId,
+    name,
+    description,
+    systemPrompt,
+    themeColor,
+    baseType,
+    primaryCompetencies,
+    secondaryCompetencies,
+    recommendedFor
+  } = body;
 
   if (!templateId) {
     return {
@@ -952,6 +980,22 @@ async function updateTemplate(event, headers) {
   if (themeColor) {
     updateExpression.push("themeColor = :themeColor");
     expressionAttributeValues[":themeColor"] = themeColor;
+  }
+  if (baseType) {
+    updateExpression.push("baseType = :baseType");
+    expressionAttributeValues[":baseType"] = baseType;
+  }
+  if (primaryCompetencies !== undefined) {
+    updateExpression.push("primaryCompetencies = :primaryCompetencies");
+    expressionAttributeValues[":primaryCompetencies"] = primaryCompetencies;
+  }
+  if (secondaryCompetencies !== undefined) {
+    updateExpression.push("secondaryCompetencies = :secondaryCompetencies");
+    expressionAttributeValues[":secondaryCompetencies"] = secondaryCompetencies;
+  }
+  if (recommendedFor !== undefined) {
+    updateExpression.push("recommendedFor = :recommendedFor");
+    expressionAttributeValues[":recommendedFor"] = recommendedFor;
   }
 
   updateExpression.push("updatedAt = :updatedAt");

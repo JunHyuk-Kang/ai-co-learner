@@ -19,6 +19,10 @@ export const AdminPanel: React.FC = () => {
   const [newPrompt, setNewPrompt] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newThemeColor, setNewThemeColor] = useState<string>('blue');
+  const [newBaseType, setNewBaseType] = useState<string>('coaching');
+  const [newPrimaryCompetencies, setNewPrimaryCompetencies] = useState<string[]>([]);
+  const [newSecondaryCompetencies, setNewSecondaryCompetencies] = useState<string[]>([]);
+  const [newRecommendedFor, setNewRecommendedFor] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     loadData();
@@ -47,6 +51,12 @@ export const AdminPanel: React.FC = () => {
           description: newDesc,
           systemPrompt: newPrompt,
           themeColor: newThemeColor,
+          baseType: newBaseType,
+          primaryCompetencies: newPrimaryCompetencies,
+          secondaryCompetencies: newSecondaryCompetencies,
+          recommendedFor: {
+            competencyBelow: newRecommendedFor
+          }
       });
       await loadData();
       setIsCreating(false);
@@ -63,6 +73,10 @@ export const AdminPanel: React.FC = () => {
     setNewDesc(template.description || '');
     setNewPrompt(template.systemPrompt);
     setNewThemeColor(template.themeColor || 'blue');
+    setNewBaseType(template.baseType || 'coaching');
+    setNewPrimaryCompetencies(template.primaryCompetencies || []);
+    setNewSecondaryCompetencies(template.secondaryCompetencies || []);
+    setNewRecommendedFor(template.recommendedFor?.competencyBelow || {});
     setIsEditing(true);
   };
 
@@ -74,6 +88,12 @@ export const AdminPanel: React.FC = () => {
         description: newDesc,
         systemPrompt: newPrompt,
         themeColor: newThemeColor,
+        baseType: newBaseType,
+        primaryCompetencies: newPrimaryCompetencies,
+        secondaryCompetencies: newSecondaryCompetencies,
+        recommendedFor: {
+          competencyBelow: newRecommendedFor
+        }
       });
       await loadData();
       setIsEditing(false);
@@ -101,6 +121,39 @@ export const AdminPanel: React.FC = () => {
     setNewPrompt('');
     setNewDesc('');
     setNewThemeColor('blue');
+    setNewBaseType('coaching');
+    setNewPrimaryCompetencies([]);
+    setNewSecondaryCompetencies([]);
+    setNewRecommendedFor({});
+  };
+
+  // Competency toggle helpers
+  const COMPETENCIES = [
+    { key: 'questionQuality', label: '질문력' },
+    { key: 'thinkingDepth', label: '사고력' },
+    { key: 'creativity', label: '창의력' },
+    { key: 'communicationClarity', label: '소통력' },
+    { key: 'executionOriented', label: '실행력' },
+    { key: 'collaborationSignal', label: '협업력' },
+  ];
+
+  const toggleCompetency = (list: string[], setList: (val: string[]) => void, key: string) => {
+    if (list.includes(key)) {
+      setList(list.filter(c => c !== key));
+    } else {
+      setList([...list, key]);
+    }
+  };
+
+  const updateRecommendThreshold = (competency: string, value: string) => {
+    const numValue = parseInt(value);
+    if (isNaN(numValue) || value === '') {
+      const newRec = { ...newRecommendedFor };
+      delete newRec[competency];
+      setNewRecommendedFor(newRec);
+    } else {
+      setNewRecommendedFor({ ...newRecommendedFor, [competency]: numValue });
+    }
   };
 
   const cancelEdit = () => {
@@ -176,20 +229,36 @@ export const AdminPanel: React.FC = () => {
                             <Input label="이름" value={newName} onChange={e => setNewName(e.target.value)} placeholder="예: 창의력 마스터" />
                             <Input label="설명" value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="간단한 설명" />
                         </div>
-                        <div>
-                            <label className="block text-xs font-medium text-gray-400 mb-1.5">Theme Color</label>
-                            <select
-                                className="w-full bg-[#121212] border border-border rounded-lg p-2 text-sm text-gray-200 focus:outline-none focus:border-primary"
-                                value={newThemeColor}
-                                onChange={e => setNewThemeColor(e.target.value)}
-                            >
-                                <option value="blue">Blue</option>
-                                <option value="purple">Purple</option>
-                                <option value="green">Green</option>
-                                <option value="orange">Orange</option>
-                                <option value="pink">Pink</option>
-                                <option value="red">Red</option>
-                            </select>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1.5">Theme Color</label>
+                                <select
+                                    className="w-full bg-[#121212] border border-border rounded-lg p-2 text-sm text-gray-200 focus:outline-none focus:border-primary"
+                                    value={newThemeColor}
+                                    onChange={e => setNewThemeColor(e.target.value)}
+                                >
+                                    <option value="blue">Blue</option>
+                                    <option value="purple">Purple</option>
+                                    <option value="green">Green</option>
+                                    <option value="orange">Orange</option>
+                                    <option value="pink">Pink</option>
+                                    <option value="red">Red</option>
+                                    <option value="teal">Teal</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-1.5">Base Type</label>
+                                <select
+                                    className="w-full bg-[#121212] border border-border rounded-lg p-2 text-sm text-gray-200 focus:outline-none focus:border-primary"
+                                    value={newBaseType}
+                                    onChange={e => setNewBaseType(e.target.value)}
+                                >
+                                    <option value="coaching">Coaching</option>
+                                    <option value="questioning">Questioning</option>
+                                    <option value="reflective">Reflective</option>
+                                    <option value="supportive">Supportive</option>
+                                </select>
+                            </div>
                         </div>
                         <div>
                             <label className="block text-xs font-medium text-gray-400 mb-1.5">System Prompt (Core Logic)</label>
@@ -200,6 +269,80 @@ export const AdminPanel: React.FC = () => {
                                 placeholder="여기에 시스템 프롬프트를 입력하세요. 에이전트의 행동 제약사항을 포함해야 합니다."
                             />
                         </div>
+
+                        {/* 역량 설정 섹션 */}
+                        <div className="space-y-4 p-4 bg-[#121212] rounded-lg border border-border">
+                            <h4 className="text-sm font-semibold text-white">역량 설정 및 추천 조건</h4>
+
+                            {/* 주요 육성 역량 */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-2">주요 육성 역량 (Primary Competencies)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {COMPETENCIES.map(comp => (
+                                        <button
+                                            key={comp.key}
+                                            type="button"
+                                            onClick={() => toggleCompetency(newPrimaryCompetencies, setNewPrimaryCompetencies, comp.key)}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                                newPrimaryCompetencies.includes(comp.key)
+                                                    ? 'bg-blue-600 text-white border-blue-500'
+                                                    : 'bg-surface text-gray-400 border-border hover:border-gray-500'
+                                            } border`}
+                                        >
+                                            {comp.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* 부차적 육성 역량 */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-2">부차적 육성 역량 (Secondary Competencies)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {COMPETENCIES.map(comp => (
+                                        <button
+                                            key={comp.key}
+                                            type="button"
+                                            onClick={() => toggleCompetency(newSecondaryCompetencies, setNewSecondaryCompetencies, comp.key)}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                                                newSecondaryCompetencies.includes(comp.key)
+                                                    ? 'bg-purple-600 text-white border-purple-500'
+                                                    : 'bg-surface text-gray-400 border-border hover:border-gray-500'
+                                            } border`}
+                                        >
+                                            {comp.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* 추천 조건 */}
+                            <div>
+                                <label className="block text-xs font-medium text-gray-400 mb-2">
+                                    추천 조건 (역량 점수가 이 값보다 낮을 때 추천)
+                                </label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {COMPETENCIES.map(comp => (
+                                        <div key={comp.key} className="flex items-center gap-2">
+                                            <label className="text-xs text-gray-400 w-24">{comp.label}</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                placeholder="예: 60"
+                                                value={newRecommendedFor[comp.key] || ''}
+                                                onChange={(e) => updateRecommendThreshold(comp.key, e.target.value)}
+                                                className="flex-1 bg-surface border border-border rounded px-2 py-1 text-xs text-white focus:outline-none focus:border-primary"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-2">
+                                    💡 예: "질문력"을 60으로 설정하면, 사용자의 질문력이 60점 미만일 때 이 봇을 추천합니다.
+                                </p>
+                            </div>
+                        </div>
+
                         <div className="flex justify-end gap-2">
                             <Button variant="ghost" onClick={cancelEdit}>취소</Button>
                             <Button onClick={isEditing ? handleUpdate : handleCreate}>
