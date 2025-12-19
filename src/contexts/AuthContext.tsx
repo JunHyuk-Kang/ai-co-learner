@@ -6,7 +6,7 @@ import { UserService } from '../services/awsBackend';
 interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<void>;
-  signup: (username: string, password: string, name: string) => Promise<{ needsConfirmation: boolean; username?: string }>;
+  signup: (username: string, password: string, name: string, organization?: string) => Promise<{ needsConfirmation: boolean; username?: string }>;
   confirmSignup: (username: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   isLoading: boolean;
@@ -30,13 +30,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const session = await fetchAuthSession();
       const tokens = session.tokens;
 
-      if (!tokens) {
+      if (!tokens || !tokens.accessToken) {
         console.log('No tokens found');
         return false;
       }
 
       // 토큰이 만료되었는지 확인
-      const expirationTime = tokens.accessToken.payload.exp as number;
+      const payload = tokens.accessToken.payload;
+      const expirationTime = payload?.exp as number | undefined;
+
+      if (!expirationTime) {
+        console.log('No expiration time in token');
+        return false;
+      }
+
       const currentTime = Math.floor(Date.now() / 1000);
 
       if (expirationTime <= currentTime) {
@@ -157,7 +164,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signup = async (username: string, password: string, name: string) => {
+  const signup = async (username: string, password: string, name: string, organization?: string) => {
     setIsLoading(true);
     try {
       // Cognito에 회원가입
@@ -167,6 +174,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         options: {
           userAttributes: {
             name,
+            'custom:organization': organization || '',
           },
         },
       });
@@ -190,7 +198,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const userProfile = await UserService.createUserProfile(
         currentUser.userId,
         username,
-        name
+        name,
+        organization
       );
 
       setUser(userProfile);

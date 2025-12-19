@@ -10,6 +10,7 @@ export const Login: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [organization, setOrganization] = useState('');
   const [confirmationCode, setConfirmationCode] = useState('');
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [pendingUsername, setPendingUsername] = useState('');
@@ -33,7 +34,7 @@ export const Login: React.FC = () => {
       if (isLogin) {
         await login(username, password);
       } else {
-        const result = await signup(username, password, name);
+        const result = await signup(username, password, name, organization);
         if (result.needsConfirmation) {
           setNeedsConfirmation(true);
           setPendingUsername(result.username || username);
@@ -153,6 +154,14 @@ export const Login: React.FC = () => {
                   placeholder="이름을 입력하세요"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
+                  required
+                />
+
+                <Input
+                  label="소속"
+                  placeholder="소속을 입력하세요 (예: ABC 회사, XYZ 대학교)"
+                  value={organization}
+                  onChange={(e) => setOrganization(e.target.value)}
                   required
                 />
               </>

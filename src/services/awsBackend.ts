@@ -36,12 +36,13 @@ export const UserService = {
     }
   },
 
-  createUserProfile: async (userId: string, username: string, name: string): Promise<User> => {
+  createUserProfile: async (userId: string, username: string, name: string, organization?: string): Promise<User> => {
     try {
       const data: any = await apiPost('/users', {
         userId,
         username,
         name,
+        organization: organization || '',
         role: 'USER',
         level: 1,
         title: '초보 탐험가',
@@ -62,11 +63,12 @@ export const UserService = {
     }
   },
 
-  updateUserProfile: async (userId: string, name: string): Promise<User> => {
+  updateUserProfile: async (userId: string, name: string, organization?: string): Promise<User> => {
     try {
       const data: any = await apiPost('/users/update', {
         userId,
         name,
+        organization,
       });
 
       // Convert userId to id for frontend User type
@@ -134,12 +136,24 @@ export const ChatService = {
     try {
       const session = await fetchAuthSession();
       const userId = session.userSub;
+      const token = session.tokens?.idToken?.toString();
+
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
 
       const API_URL = import.meta.env.VITE_API_GATEWAY_URL;
+      console.log('Streaming to:', `${API_URL}/chat/stream`, { userId, botId });
+
       const response = await fetch(`${API_URL}/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           userId,
@@ -294,6 +308,46 @@ export const BotService = {
   },
 };
 
+export interface UsageSummary {
+  totalCost: number;
+  totalTokens: number;
+  totalMessages: number;
+  totalUsers: number;
+  avgCostPerMessage: number;
+  avgCostPerUser: number;
+}
+
+export interface UserUsageStats {
+  userId: string;
+  name: string;
+  email: string;
+  organization?: string;
+  totalCost: number;
+  totalTokens: number;
+  totalMessages: number;
+  inputTokens: number;
+  outputTokens: number;
+  avgCostPerMessage: number;
+}
+
+export interface DailyUsageStats {
+  date: string;
+  totalCost: number;
+  totalTokens: number;
+  totalMessages: number;
+}
+
+export interface UsageStatsResponse {
+  summary: UsageSummary;
+  userStats: UserUsageStats[];
+  dailyStats: DailyUsageStats[];
+  period: {
+    startDate: string;
+    endDate: string;
+    days: number;
+  };
+}
+
 export const AdminService = {
   getAllUsers: async () => {
     try {
@@ -327,6 +381,43 @@ export const AdminService = {
       return data;
     } catch (error) {
       console.error('Failed to block/unblock user:', error);
+      throw error;
+    }
+  },
+
+  updateUserInfo: async (userId: string, name: string, organization?: string, password?: string) => {
+    try {
+      const data = await apiPost<any>('/admin/users/update-info', {
+        userId,
+        name,
+        organization,
+        password,
+      });
+      return data;
+    } catch (error) {
+      console.error('Failed to update user info:', error);
+      throw error;
+    }
+  },
+
+  getUsageStats: async (params?: {
+    userId?: string;
+    startDate?: string;
+    endDate?: string;
+    days?: number;
+  }): Promise<UsageStatsResponse> => {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.userId) queryParams.append('userId', params.userId);
+      if (params?.startDate) queryParams.append('startDate', params.startDate);
+      if (params?.endDate) queryParams.append('endDate', params.endDate);
+      if (params?.days) queryParams.append('days', params.days.toString());
+
+      const url = `/admin/usage${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const data = await apiGet<UsageStatsResponse>(url);
+      return data;
+    } catch (error) {
+      console.error('Failed to get usage stats:', error);
       throw error;
     }
   },

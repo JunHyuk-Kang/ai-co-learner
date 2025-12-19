@@ -77,6 +77,7 @@ BEDROCK_MODEL_ID=meta.llama3-2-3b-instruct-v1:0
 - `ai-co-learner-learning-analytics` (1년 TTL)
 - `ai-co-learner-user-competencies`
 - `ai-co-learner-bot-templates`
+- `ai-co-learner-usage-tracking` (사용량 추적, TTL 미설정)
 
 ### 코드 수정 시
 - Lambda 함수는 `index.mjs` (ES Module)
@@ -94,6 +95,10 @@ BEDROCK_MODEL_ID=meta.llama3-2-3b-instruct-v1:0
 - 배치 메시지 분석 시스템
 - 역량 자동 계산 시스템
 - 대시보드 역량 차트
+- **사용량 추적 & 비용 관리 시스템** ⭐ NEW!
+  - 실시간 토큰 사용량 추적
+  - 사용자별 비용 집계
+  - 관리자 대시보드 (일별 차트, 월간 예상 비용)
 
 ### 🚧 다음 단계
 - 초기 역량 진단 시스템 (InitialAssessment 페이지)
@@ -132,6 +137,9 @@ aws logs tail /aws/lambda/ai-co-learner-chat --since 5m --region ap-northeast-2 
 ### DynamoDB 비용 급증
 - TTL 설정 확인 (chat-sessions: 30일, learning-analytics: 1년)
 - Scan 대신 Query 사용
+
+### 수정 및 업데이트 시 항상 발생하는 문제
+- Lambda 함수가 정상적으로 CORS 헤더를 반환에서 에러가 발생, 따라서 이 문제가 안생기가 디테일하게 확인
 
 ---
 

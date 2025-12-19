@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
-import { User as UserIcon, Mail, Shield, Award, Edit2, Save, X, Lock, Eye, EyeOff } from 'lucide-react';
+import { User as UserIcon, Mail, Shield, Award, Edit2, Save, X, Lock, Eye, EyeOff, Building2 } from 'lucide-react';
 import { UserService } from '../services/awsBackend';
 import { updatePassword } from 'aws-amplify/auth';
 
@@ -9,6 +9,7 @@ export const UserProfile: React.FC = () => {
   const { user, logout } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState(user?.name || '');
+  const [editedOrganization, setEditedOrganization] = useState(user?.organization || '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -25,6 +26,7 @@ export const UserProfile: React.FC = () => {
   useEffect(() => {
     if (user) {
       setEditedName(user.name);
+      setEditedOrganization(user.organization || '');
     }
   }, [user]);
 
@@ -41,7 +43,7 @@ export const UserProfile: React.FC = () => {
     setSuccessMessage(null);
 
     try {
-      await UserService.updateUserProfile(user.id, editedName.trim());
+      await UserService.updateUserProfile(user.id, editedName.trim(), editedOrganization.trim());
       setSuccessMessage('프로필이 성공적으로 업데이트되었습니다.');
       setIsEditing(false);
 
@@ -59,6 +61,7 @@ export const UserProfile: React.FC = () => {
 
   const handleCancel = () => {
     setEditedName(user?.name || '');
+    setEditedOrganization(user?.organization || '');
     setIsEditing(false);
     setError(null);
   };
@@ -206,6 +209,25 @@ export const UserProfile: React.FC = () => {
                     <Edit2 className="w-5 h-5" />
                   </button>
                 )}
+              </div>
+
+              {/* Organization */}
+              <div className="flex items-center space-x-3 p-4 bg-gray-700/50 rounded-lg">
+                <Building2 className="w-5 h-5 text-indigo-400" />
+                <div className="flex-1">
+                  <p className="text-sm text-gray-400 mb-1">소속</p>
+                  {isEditing ? (
+                    <input
+                      type="text"
+                      value={editedOrganization}
+                      onChange={(e) => setEditedOrganization(e.target.value)}
+                      className="w-full bg-gray-600 text-white px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none"
+                      placeholder="소속을 입력하세요 (예: ABC 회사, XYZ 대학교)"
+                    />
+                  ) : (
+                    <p className="text-white font-medium">{user.organization || '미설정'}</p>
+                  )}
+                </div>
               </div>
 
               {/* Edit Actions */}

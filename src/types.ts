@@ -7,6 +7,7 @@ export interface User {
   id: string;
   username: string;
   name: string;
+  organization?: string; // 사용자 소속 (회사, 학교 등)
   role: Role;
   level: number;
   title?: string; // e.g. "호기심 많은 탐험가"

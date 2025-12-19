@@ -2,6 +2,7 @@ import { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStream
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, ScanCommand, DeleteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
+import { CognitoIdentityProviderClient, AdminSetUserPasswordCommand } from "@aws-sdk/client-cognito-identity-provider";
 
 // Bedrock 클라이언트 (us-east-1 - Cross Region)
 const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
@@ -14,6 +15,9 @@ const dynamoClient = DynamoDBDocumentClient.from(
 // Lambda 클라이언트 (ap-northeast-2 - 서울)
 const lambdaClient = new LambdaClient({ region: "ap-northeast-2" });
 
+// Cognito 클라이언트 (ap-northeast-2 - 서울)
+const cognitoClient = new CognitoIdentityProviderClient({ region: "ap-northeast-2" });
+
 const SESSIONS_TABLE = "ai-co-learner-chat-sessions";
 const TEMPLATES_TABLE = "ai-co-learner-bot-templates";
 const USERS_TABLE = "ai-co-learner-users";
@@ -23,8 +27,18 @@ const COMPETENCIES_TABLE = "ai-co-learner-user-competencies";
 const QUESTS_TABLE = "ai-co-learner-daily-quests";
 const ANALYTICS_TABLE = "ai-co-learner-learning-analytics";
 const ACHIEVEMENTS_TABLE = "ai-co-learner-user-achievements";
+const USAGE_TRACKING_TABLE = "ai-co-learner-usage-tracking";
+const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || "ap-northeast-2_OCntQ228q";
 // Claude 3 Haiku - 빠르고 저렴하며 한국어 성능 우수
 const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
+
+// 비용 계산 상수 (USD per 1M tokens)
+const PRICING = {
+  "anthropic.claude-3-haiku-20240307-v1:0": {
+    input: 0.25,
+    output: 1.25
+  }
+};
 
 // CORS headers defined at top level
 const CORS_HEADERS = {
@@ -105,8 +119,16 @@ export const handler = async (event) => {
       return await updateUserRole(event, headers);
     }
 
+    if (method === 'POST' && path.includes('/admin/users/update-info')) {
+      return await updateUserInfo(event, headers);
+    }
+
     if (method === 'POST' && path.includes('/admin/users/block')) {
       return await blockUser(event, headers);
+    }
+
+    if (method === 'GET' && path.includes('/admin/usage')) {
+      return await getUsageStats(event, headers);
     }
 
     // Assessment APIs
@@ -292,6 +314,11 @@ async function sendChatMessage(event, headers) {
 
   console.log("Bedrock response:", aiMessage);
 
+  // 7-1. 사용량 추적 (토큰 사용량)
+  const inputTokens = responseBody.usage?.input_tokens || 0;
+  const outputTokens = responseBody.usage?.output_tokens || 0;
+  await trackUsage(userId, sessionId, inputTokens, outputTokens, MODEL_ID);
+
   // 8. DynamoDB에 메시지 저장
   const timestamp = Date.now();
   const messageId = `${sessionId}-${timestamp}`;
@@ -328,11 +355,11 @@ async function sendChatMessage(event, headers) {
 
 // 스트리밍 채팅 메시지 전송
 async function sendChatMessageStream(event, headers) {
-  const body = JSON.parse(event.body || "{}");
-  const { userId, sessionId, message } = body;
-
-  // 입력 검증
-  if (!userId || !sessionId || !message) {
+  let body;
+  try {
+    body = JSON.parse(event.body || "{}");
+  } catch (parseError) {
+    console.error("Failed to parse request body:", parseError);
     return {
       statusCode: 400,
       headers: {
@@ -340,7 +367,36 @@ async function sendChatMessageStream(event, headers) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        error: "Missing required fields: userId, sessionId, message"
+        error: "Invalid JSON in request body"
+      })
+    };
+  }
+
+  const { userId, sessionId, message } = body;
+
+  // 입력 검증 - 더 자세한 로깅
+  console.log("Stream request received:", { userId, sessionId, messageLength: message?.length });
+
+  if (!userId || !sessionId || !message) {
+    console.error("Missing required fields:", {
+      hasUserId: !!userId,
+      hasSessionId: !!sessionId,
+      hasMessage: !!message,
+      body: JSON.stringify(body)
+    });
+    return {
+      statusCode: 400,
+      headers: {
+        ...headers,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        error: "Missing required fields: userId, sessionId, message",
+        received: {
+          hasUserId: !!userId,
+          hasSessionId: !!sessionId,
+          hasMessage: !!message
+        }
       })
     };
   }
@@ -431,6 +487,8 @@ async function sendChatMessageStream(event, headers) {
 
     // 5. 스트림 처리 및 전체 응답 수집
     let fullAiMessage = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
     const chunks = [];
 
     for await (const event of response.body) {
@@ -445,10 +503,21 @@ async function sendChatMessageStream(event, headers) {
             text: text
           });
         }
+
+        // 토큰 사용량 수집
+        if (chunk.type === 'message_start') {
+          inputTokens = chunk.message?.usage?.input_tokens || 0;
+        }
+        if (chunk.type === 'message_delta') {
+          outputTokens = chunk.usage?.output_tokens || 0;
+        }
       }
     }
 
     console.log("Streaming completed. Full message:", fullAiMessage);
+
+    // 5-1. 사용량 추적
+    await trackUsage(userId, sessionId, inputTokens, outputTokens, MODEL_ID);
 
     // 6. DynamoDB에 메시지 저장 (스트림 완료 후)
     const timestamp = Date.now();
@@ -583,99 +652,117 @@ async function getTemplates(headers) {
 
 // 사용자 봇 조회
 async function getUserBots(event, headers) {
-  const userId = event.pathParameters?.userId || event.path.split('/').pop();
+  try {
+    const userId = event.pathParameters?.userId || event.path.split('/').pop();
 
-  const USER_BOTS_TABLE = "ai-co-learner-user-bots";
+    const USER_BOTS_TABLE = "ai-co-learner-user-bots";
 
-  const response = await dynamoClient.send(new ScanCommand({
-    TableName: USER_BOTS_TABLE,
-    FilterExpression: "userId = :userId",
-    ExpressionAttributeValues: {
-      ":userId": userId
-    }
-  }));
+    const response = await dynamoClient.send(new ScanCommand({
+      TableName: USER_BOTS_TABLE,
+      FilterExpression: "userId = :userId",
+      ExpressionAttributeValues: {
+        ":userId": userId
+      }
+    }));
 
-  const bots = (response.Items || []).map(item => ({
-    id: item.botId,
-    userId: item.userId,
-    templateId: item.templateId,
-    name: item.name,
-    currentLevel: item.currentLevel || 1,
-    createdAt: item.createdAt,
-    templateName: item.templateName || item.name,
-    themeColor: item.themeColor || 'blue',
-    description: item.description || ''
-  }));
+    const bots = (response.Items || []).map(item => ({
+      id: item.botId,
+      userId: item.userId,
+      templateId: item.templateId,
+      name: item.name,
+      currentLevel: item.currentLevel || 1,
+      createdAt: item.createdAt,
+      templateName: item.templateName || item.name,
+      themeColor: item.themeColor || 'blue',
+      description: item.description || ''
+    }));
 
-  return {
-    statusCode: 200,
-    headers,
-    body: JSON.stringify(bots)
-  };
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify(bots)
+    };
+  } catch (error) {
+    console.error("Error fetching user bots:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
 }
 
 // 사용자 봇 생성
 async function createUserBot(event, headers) {
-  const body = JSON.parse(event.body || "{}");
-  const { userId, templateId, name } = body;
+  try {
+    const body = JSON.parse(event.body || "{}");
+    const { userId, templateId, name } = body;
 
-  if (!userId || !templateId || !name) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: "Missing required fields" })
-    };
-  }
-
-  const USER_BOTS_TABLE = "ai-co-learner-user-bots";
-  const botId = `bot-${Date.now()}`;
-
-  // 템플릿 정보 가져오기
-  const templateResponse = await dynamoClient.send(new GetCommand({
-    TableName: TEMPLATES_TABLE,
-    Key: { templateId }
-  }));
-
-  const template = templateResponse.Item;
-
-  if (!template) {
-    return {
-      statusCode: 404,
-      headers,
-      body: JSON.stringify({ error: "Template not found" })
-    };
-  }
-
-  await dynamoClient.send(new PutCommand({
-    TableName: USER_BOTS_TABLE,
-    Item: {
-      userId,
-      botId,
-      templateId,
-      name,
-      currentLevel: 1,
-      createdAt: new Date().toISOString(),
-      templateName: template.name,
-      themeColor: template.themeColor || 'blue',
-      description: template.description || ''
+    if (!userId || !templateId || !name) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Missing required fields" })
+      };
     }
-  }));
 
-  return {
-    statusCode: 200,
-    headers,
-    body: JSON.stringify({
-      id: botId,
-      userId,
-      templateId,
-      name,
-      currentLevel: 1,
-      createdAt: new Date().toISOString(),
-      templateName: template.name,
-      themeColor: template.themeColor || 'blue',
-      description: template.description || ''
-    })
-  };
+    const USER_BOTS_TABLE = "ai-co-learner-user-bots";
+    const botId = `bot-${Date.now()}`;
+
+    // 템플릿 정보 가져오기
+    const templateResponse = await dynamoClient.send(new GetCommand({
+      TableName: TEMPLATES_TABLE,
+      Key: { templateId }
+    }));
+
+    const template = templateResponse.Item;
+
+    if (!template) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: "Template not found" })
+      };
+    }
+
+    await dynamoClient.send(new PutCommand({
+      TableName: USER_BOTS_TABLE,
+      Item: {
+        userId,
+        botId,
+        templateId,
+        name,
+        currentLevel: 1,
+        createdAt: new Date().toISOString(),
+        templateName: template.name,
+        themeColor: template.themeColor || 'blue',
+        description: template.description || ''
+      }
+    }));
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        id: botId,
+        userId,
+        templateId,
+        name,
+        currentLevel: 1,
+        createdAt: new Date().toISOString(),
+        templateName: template.name,
+        themeColor: template.themeColor || 'blue',
+        description: template.description || ''
+      })
+    };
+  } catch (error) {
+    console.error("Error creating user bot:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
 }
 
 // 사용자 봇 삭제
@@ -776,51 +863,61 @@ async function getUserProfile(event, headers) {
 
 // 사용자 프로필 생성/업데이트
 async function createUserProfile(event, headers) {
-  const body = JSON.parse(event.body || "{}");
-  const { userId, username, name, role = 'USER', level = 1, title = '초보 탐험가' } = body;
+  try {
+    const body = JSON.parse(event.body || "{}");
+    const { userId, username, name, organization, role = 'USER', level = 1, title = '초보 탐험가' } = body;
 
-  if (!userId || !username) {
+    if (!userId || !username) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Missing required fields: userId, username" })
+      };
+    }
+
+    const USERS_TABLE = "ai-co-learner-users";
+
+    await dynamoClient.send(new PutCommand({
+      TableName: USERS_TABLE,
+      Item: {
+        userId,
+        username,
+        name: name || username,
+        organization: organization || '',
+        role,
+        level,
+        title,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    }));
+
     return {
-      statusCode: 400,
+      statusCode: 200,
       headers,
-      body: JSON.stringify({ error: "Missing required fields: userId, username" })
+      body: JSON.stringify({
+        userId,
+        username,
+        name: name || username,
+        role,
+        level,
+        title
+      })
+    };
+  } catch (error) {
+    console.error("Error creating user profile:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
     };
   }
-
-  const USERS_TABLE = "ai-co-learner-users";
-
-  await dynamoClient.send(new PutCommand({
-    TableName: USERS_TABLE,
-    Item: {
-      userId,
-      username,
-      name: name || username,
-      role,
-      level,
-      title,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  }));
-
-  return {
-    statusCode: 200,
-    headers,
-    body: JSON.stringify({
-      userId,
-      username,
-      name: name || username,
-      role,
-      level,
-      title
-    })
-  };
 }
 
 // 사용자 프로필 업데이트
 async function updateUserProfile(event, headers) {
   const body = JSON.parse(event.body || "{}");
-  const { userId, name } = body;
+  const { userId, name, organization } = body;
 
   if (!userId || !name) {
     return {
@@ -833,17 +930,25 @@ async function updateUserProfile(event, headers) {
   const USERS_TABLE = "ai-co-learner-users";
 
   try {
+    // organization이 제공된 경우에만 업데이트
+    const updateExpression = organization !== undefined
+      ? "SET #name = :name, #organization = :organization, updatedAt = :updatedAt"
+      : "SET #name = :name, updatedAt = :updatedAt";
+
+    const expressionAttributeNames = organization !== undefined
+      ? { "#name": "name", "#organization": "organization" }
+      : { "#name": "name" };
+
+    const expressionAttributeValues = organization !== undefined
+      ? { ":name": name, ":organization": organization, ":updatedAt": new Date().toISOString() }
+      : { ":name": name, ":updatedAt": new Date().toISOString() };
+
     const result = await dynamoClient.send(new UpdateCommand({
       TableName: USERS_TABLE,
       Key: { userId },
-      UpdateExpression: "SET #name = :name, updatedAt = :updatedAt",
-      ExpressionAttributeNames: {
-        "#name": "name"
-      },
-      ExpressionAttributeValues: {
-        ":name": name,
-        ":updatedAt": new Date().toISOString()
-      },
+      UpdateExpression: updateExpression,
+      ExpressionAttributeNames: expressionAttributeNames,
+      ExpressionAttributeValues: expressionAttributeValues,
       ReturnValues: "ALL_NEW"
     }));
 
@@ -877,54 +982,51 @@ function buildClaudeMessages(userMessage, conversationHistory) {
   return messages;
 }
 
+// 사용량 추적 함수
+async function trackUsage(userId, sessionId, inputTokens, outputTokens, modelId = MODEL_ID) {
+  const totalTokens = inputTokens + outputTokens;
+  const pricing = PRICING[modelId] || PRICING[MODEL_ID];
+
+  const inputCost = (inputTokens / 1000000) * pricing.input;
+  const outputCost = (outputTokens / 1000000) * pricing.output;
+  const estimatedCost = inputCost + outputCost;
+
+  const timestamp = Date.now();
+
+  try {
+    await dynamoClient.send(new PutCommand({
+      TableName: USAGE_TRACKING_TABLE,
+      Item: {
+        userId,
+        timestamp,
+        sessionId,
+        messageId: `${sessionId}-${timestamp}`,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        estimatedCost: parseFloat(estimatedCost.toFixed(6)),
+        service: 'bedrock',
+        operation: 'chat',
+        modelId,
+        date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+        createdAt: new Date().toISOString()
+      }
+    }));
+
+    console.log(`✅ Usage tracked: ${userId} | ${totalTokens} tokens | $${estimatedCost.toFixed(6)}`);
+  } catch (error) {
+    console.error('❌ Failed to track usage:', error);
+    // 사용량 추적 실패는 메인 로직에 영향을 주지 않도록 에러를 던지지 않음
+  }
+}
+
 // ===== ADMIN APIs =====
 
 // 템플릿 생성
 async function createTemplate(event, headers) {
-  const body = JSON.parse(event.body || "{}");
-  const {
-    name,
-    description,
-    systemPrompt,
-    themeColor,
-    baseType,
-    primaryCompetencies,
-    secondaryCompetencies,
-    recommendedFor
-  } = body;
-
-  if (!name || !systemPrompt) {
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({ error: "Missing required fields: name, systemPrompt" })
-    };
-  }
-
-  const templateId = `t${Date.now()}`;
-
-  await dynamoClient.send(new PutCommand({
-    TableName: TEMPLATES_TABLE,
-    Item: {
-      templateId,
-      name,
-      description: description || '',
-      systemPrompt,
-      themeColor: themeColor || 'blue',
-      baseType: baseType || 'coaching',
-      primaryCompetencies: primaryCompetencies || [],
-      secondaryCompetencies: secondaryCompetencies || [],
-      recommendedFor: recommendedFor || {},
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-  }));
-
-  return {
-    statusCode: 200,
-    headers,
-    body: JSON.stringify({
-      id: templateId,
+  try {
+    const body = JSON.parse(event.body || "{}");
+    const {
       name,
       description,
       systemPrompt,
@@ -933,88 +1035,147 @@ async function createTemplate(event, headers) {
       primaryCompetencies,
       secondaryCompetencies,
       recommendedFor
-    })
-  };
+    } = body;
+
+    if (!name || !systemPrompt) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Missing required fields: name, systemPrompt" })
+      };
+    }
+
+    const templateId = `t${Date.now()}`;
+
+    await dynamoClient.send(new PutCommand({
+      TableName: TEMPLATES_TABLE,
+      Item: {
+        templateId,
+        name,
+        description: description || '',
+        systemPrompt,
+        themeColor: themeColor || 'blue',
+        baseType: baseType || 'coaching',
+        primaryCompetencies: primaryCompetencies || [],
+        secondaryCompetencies: secondaryCompetencies || [],
+        recommendedFor: recommendedFor || {},
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }
+    }));
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        id: templateId,
+        name,
+        description,
+        systemPrompt,
+        themeColor,
+        baseType,
+        primaryCompetencies,
+        secondaryCompetencies,
+        recommendedFor
+      })
+    };
+  } catch (error) {
+    console.error("Error creating template:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
 }
 
 // 템플릿 수정
 async function updateTemplate(event, headers) {
-  const body = JSON.parse(event.body || "{}");
-  const {
-    templateId,
-    name,
-    description,
-    systemPrompt,
-    themeColor,
-    baseType,
-    primaryCompetencies,
-    secondaryCompetencies,
-    recommendedFor
-  } = body;
+  try {
+    const body = JSON.parse(event.body || "{}");
+    const {
+      templateId,
+      name,
+      description,
+      systemPrompt,
+      themeColor,
+      baseType,
+      primaryCompetencies,
+      secondaryCompetencies,
+      recommendedFor
+    } = body;
 
-  if (!templateId) {
+    if (!templateId) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Missing required field: templateId" })
+      };
+    }
+
+    const updateExpression = [];
+    const expressionAttributeValues = {};
+    const expressionAttributeNames = {};
+
+    if (name) {
+      updateExpression.push("#name = :name");
+      expressionAttributeNames["#name"] = "name";
+      expressionAttributeValues[":name"] = name;
+    }
+    if (description !== undefined) {
+      updateExpression.push("description = :description");
+      expressionAttributeValues[":description"] = description;
+    }
+    if (systemPrompt) {
+      updateExpression.push("systemPrompt = :systemPrompt");
+      expressionAttributeValues[":systemPrompt"] = systemPrompt;
+    }
+    if (themeColor) {
+      updateExpression.push("themeColor = :themeColor");
+      expressionAttributeValues[":themeColor"] = themeColor;
+    }
+    if (baseType) {
+      updateExpression.push("baseType = :baseType");
+      expressionAttributeValues[":baseType"] = baseType;
+    }
+    if (primaryCompetencies !== undefined) {
+      updateExpression.push("primaryCompetencies = :primaryCompetencies");
+      expressionAttributeValues[":primaryCompetencies"] = primaryCompetencies;
+    }
+    if (secondaryCompetencies !== undefined) {
+      updateExpression.push("secondaryCompetencies = :secondaryCompetencies");
+      expressionAttributeValues[":secondaryCompetencies"] = secondaryCompetencies;
+    }
+    if (recommendedFor !== undefined) {
+      updateExpression.push("recommendedFor = :recommendedFor");
+      expressionAttributeValues[":recommendedFor"] = recommendedFor;
+    }
+
+    updateExpression.push("updatedAt = :updatedAt");
+    expressionAttributeValues[":updatedAt"] = new Date().toISOString();
+
+    const result = await dynamoClient.send(new UpdateCommand({
+      TableName: TEMPLATES_TABLE,
+      Key: { templateId },
+      UpdateExpression: "SET " + updateExpression.join(", "),
+      ExpressionAttributeNames: Object.keys(expressionAttributeNames).length > 0 ? expressionAttributeNames : undefined,
+      ExpressionAttributeValues: expressionAttributeValues,
+      ReturnValues: "ALL_NEW"
+    }));
+
     return {
-      statusCode: 400,
+      statusCode: 200,
       headers,
-      body: JSON.stringify({ error: "Missing required field: templateId" })
+      body: JSON.stringify(result.Attributes)
+    };
+  } catch (error) {
+    console.error("Error updating template:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
     };
   }
-
-  const updateExpression = [];
-  const expressionAttributeValues = {};
-  const expressionAttributeNames = {};
-
-  if (name) {
-    updateExpression.push("#name = :name");
-    expressionAttributeNames["#name"] = "name";
-    expressionAttributeValues[":name"] = name;
-  }
-  if (description !== undefined) {
-    updateExpression.push("description = :description");
-    expressionAttributeValues[":description"] = description;
-  }
-  if (systemPrompt) {
-    updateExpression.push("systemPrompt = :systemPrompt");
-    expressionAttributeValues[":systemPrompt"] = systemPrompt;
-  }
-  if (themeColor) {
-    updateExpression.push("themeColor = :themeColor");
-    expressionAttributeValues[":themeColor"] = themeColor;
-  }
-  if (baseType) {
-    updateExpression.push("baseType = :baseType");
-    expressionAttributeValues[":baseType"] = baseType;
-  }
-  if (primaryCompetencies !== undefined) {
-    updateExpression.push("primaryCompetencies = :primaryCompetencies");
-    expressionAttributeValues[":primaryCompetencies"] = primaryCompetencies;
-  }
-  if (secondaryCompetencies !== undefined) {
-    updateExpression.push("secondaryCompetencies = :secondaryCompetencies");
-    expressionAttributeValues[":secondaryCompetencies"] = secondaryCompetencies;
-  }
-  if (recommendedFor !== undefined) {
-    updateExpression.push("recommendedFor = :recommendedFor");
-    expressionAttributeValues[":recommendedFor"] = recommendedFor;
-  }
-
-  updateExpression.push("updatedAt = :updatedAt");
-  expressionAttributeValues[":updatedAt"] = new Date().toISOString();
-
-  const result = await dynamoClient.send(new UpdateCommand({
-    TableName: TEMPLATES_TABLE,
-    Key: { templateId },
-    UpdateExpression: "SET " + updateExpression.join(", "),
-    ExpressionAttributeNames: Object.keys(expressionAttributeNames).length > 0 ? expressionAttributeNames : undefined,
-    ExpressionAttributeValues: expressionAttributeValues,
-    ReturnValues: "ALL_NEW"
-  }));
-
-  return {
-    statusCode: 200,
-    headers,
-    body: JSON.stringify(result.Attributes)
-  };
 }
 
 // 템플릿 삭제
@@ -1116,6 +1277,202 @@ async function updateUserRole(event, headers) {
   }
 }
 
+// 사용량 통계 조회 (관리자용)
+async function getUsageStats(event, headers) {
+  try {
+    // Query parameters
+    const userId = event.queryStringParameters?.userId;
+    const startDate = event.queryStringParameters?.startDate; // YYYY-MM-DD
+    const endDate = event.queryStringParameters?.endDate; // YYYY-MM-DD
+    const days = parseInt(event.queryStringParameters?.days || '30', 10);
+
+    let allUsageData = [];
+
+    if (userId) {
+      // 특정 사용자 사용량 조회
+      const endTimestamp = endDate
+        ? new Date(endDate).getTime()
+        : Date.now();
+      const startTimestamp = startDate
+        ? new Date(startDate).getTime()
+        : endTimestamp - (days * 24 * 60 * 60 * 1000);
+
+      const result = await dynamoClient.send(new QueryCommand({
+        TableName: USAGE_TRACKING_TABLE,
+        KeyConditionExpression: 'userId = :userId AND #timestamp BETWEEN :start AND :end',
+        ExpressionAttributeNames: {
+          '#timestamp': 'timestamp'
+        },
+        ExpressionAttributeValues: {
+          ':userId': userId,
+          ':start': startTimestamp,
+          ':end': endTimestamp
+        }
+      }));
+
+      allUsageData = result.Items || [];
+    } else {
+      // 전체 사용자 사용량 조회 (Scan)
+      const result = await dynamoClient.send(new ScanCommand({
+        TableName: USAGE_TRACKING_TABLE
+      }));
+
+      allUsageData = result.Items || [];
+
+      // 날짜 필터링
+      if (startDate || endDate || days) {
+        const endTimestamp = endDate
+          ? new Date(endDate).getTime()
+          : Date.now();
+        const startTimestamp = startDate
+          ? new Date(startDate).getTime()
+          : endTimestamp - (days * 24 * 60 * 60 * 1000);
+
+        allUsageData = allUsageData.filter(item =>
+          item.timestamp >= startTimestamp && item.timestamp <= endTimestamp
+        );
+      }
+    }
+
+    // 사용자별 집계
+    const userStats = {};
+    let totalCost = 0;
+    let totalTokens = 0;
+    let totalMessages = 0;
+
+    allUsageData.forEach(item => {
+      const uid = item.userId;
+
+      if (!userStats[uid]) {
+        userStats[uid] = {
+          userId: uid,
+          totalCost: 0,
+          totalTokens: 0,
+          totalMessages: 0,
+          inputTokens: 0,
+          outputTokens: 0
+        };
+      }
+
+      userStats[uid].totalCost += item.estimatedCost || 0;
+      userStats[uid].totalTokens += item.totalTokens || 0;
+      userStats[uid].inputTokens += item.inputTokens || 0;
+      userStats[uid].outputTokens += item.outputTokens || 0;
+      userStats[uid].totalMessages += 1;
+
+      totalCost += item.estimatedCost || 0;
+      totalTokens += item.totalTokens || 0;
+      totalMessages += 1;
+    });
+
+    // 사용자 정보 조회 (이름, 이메일)
+    const userIds = Object.keys(userStats);
+    const userInfoPromises = userIds.map(async (uid) => {
+      try {
+        const result = await dynamoClient.send(new GetCommand({
+          TableName: USERS_TABLE,
+          Key: { userId: uid }
+        }));
+        return {
+          userId: uid,
+          name: result.Item?.name || 'Unknown',
+          email: result.Item?.email || result.Item?.username || 'N/A'
+        };
+      } catch (error) {
+        console.error(`Failed to get user info for ${uid}:`, error);
+        return {
+          userId: uid,
+          name: 'Unknown',
+          email: 'N/A'
+        };
+      }
+    });
+
+    const userInfoList = await Promise.all(userInfoPromises);
+    const userInfoMap = {};
+    userInfoList.forEach(info => {
+      userInfoMap[info.userId] = info;
+    });
+
+    // userStats에 사용자 정보 추가
+    Object.keys(userStats).forEach(uid => {
+      userStats[uid].name = userInfoMap[uid]?.name || 'Unknown';
+      userStats[uid].email = userInfoMap[uid]?.email || 'N/A';
+      userStats[uid].organization = userInfoMap[uid]?.organization || '';
+    });
+
+    // 일별 집계
+    const dailyStats = {};
+    allUsageData.forEach(item => {
+      const date = item.date || new Date(item.timestamp).toISOString().split('T')[0];
+
+      if (!dailyStats[date]) {
+        dailyStats[date] = {
+          date,
+          totalCost: 0,
+          totalTokens: 0,
+          totalMessages: 0
+        };
+      }
+
+      dailyStats[date].totalCost += item.estimatedCost || 0;
+      dailyStats[date].totalTokens += item.totalTokens || 0;
+      dailyStats[date].totalMessages += 1;
+    });
+
+    // 배열로 변환 및 정렬
+    const userStatsArray = Object.values(userStats)
+      .map(stat => ({
+        ...stat,
+        totalCost: parseFloat(stat.totalCost.toFixed(6)),
+        avgCostPerMessage: stat.totalMessages > 0
+          ? parseFloat((stat.totalCost / stat.totalMessages).toFixed(6))
+          : 0
+      }))
+      .sort((a, b) => b.totalCost - a.totalCost);
+
+    const dailyStatsArray = Object.values(dailyStats)
+      .map(stat => ({
+        ...stat,
+        totalCost: parseFloat(stat.totalCost.toFixed(6))
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        summary: {
+          totalCost: parseFloat(totalCost.toFixed(6)),
+          totalTokens,
+          totalMessages,
+          totalUsers: Object.keys(userStats).length,
+          avgCostPerMessage: totalMessages > 0
+            ? parseFloat((totalCost / totalMessages).toFixed(6))
+            : 0,
+          avgCostPerUser: Object.keys(userStats).length > 0
+            ? parseFloat((totalCost / Object.keys(userStats).length).toFixed(6))
+            : 0
+        },
+        userStats: userStatsArray,
+        dailyStats: dailyStatsArray,
+        period: {
+          startDate: startDate || new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          endDate: endDate || new Date().toISOString().split('T')[0],
+          days
+        }
+      })
+    };
+  } catch (error) {
+    console.error('Get usage stats error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
+}
+
 // 사용자 차단/차단해제
 async function blockUser(event, headers) {
   const body = JSON.parse(event.body || "{}");
@@ -1145,6 +1502,117 @@ async function blockUser(event, headers) {
     headers,
     body: JSON.stringify(result.Attributes)
   };
+}
+
+// 관리자용 사용자 정보 업데이트 (이름, 소속, 비밀번호 변경)
+async function updateUserInfo(event, headers) {
+  const body = JSON.parse(event.body || "{}");
+  const { userId, name, organization, password } = body;
+
+  console.log("Admin updating user info for userId:", userId);
+  console.log("New name:", name);
+  console.log("New organization:", organization);
+  console.log("Password reset requested:", !!password);
+
+  if (!userId) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: "Missing required field: userId" })
+    };
+  }
+
+  // 최소 하나의 필드는 제공되어야 함
+  if (!name && !organization && !password) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: "At least one field (name, organization, or password) must be provided" })
+    };
+  }
+
+  try {
+    // 비밀번호 변경 (Cognito)
+    if (password) {
+      if (password.length < 8) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: "Password must be at least 8 characters long" })
+        };
+      }
+
+      try {
+        await cognitoClient.send(new AdminSetUserPasswordCommand({
+          UserPoolId: COGNITO_USER_POOL_ID,
+          Username: userId,
+          Password: password,
+          Permanent: true
+        }));
+        console.log("✅ Password updated successfully for userId:", userId);
+      } catch (cognitoError) {
+        console.error("❌ Error updating password in Cognito:", cognitoError);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: "Failed to update password: " + cognitoError.message })
+        };
+      }
+    }
+
+    // DynamoDB 사용자 정보 업데이트 (이름, 소속)
+    if (name || organization !== undefined) {
+      const updateParts = [];
+      const expressionAttributeNames = {};
+      const expressionAttributeValues = { ":updatedAt": new Date().toISOString() };
+
+      if (name) {
+        updateParts.push("#name = :name");
+        expressionAttributeNames["#name"] = "name";
+        expressionAttributeValues[":name"] = name;
+      }
+
+      if (organization !== undefined) {
+        updateParts.push("#organization = :organization");
+        expressionAttributeNames["#organization"] = "organization";
+        expressionAttributeValues[":organization"] = organization;
+      }
+
+      updateParts.push("updatedAt = :updatedAt");
+      const updateExpression = "SET " + updateParts.join(", ");
+
+      const result = await dynamoClient.send(new UpdateCommand({
+        TableName: USERS_TABLE,
+        Key: { userId },
+        UpdateExpression: updateExpression,
+        ExpressionAttributeNames: expressionAttributeNames,
+        ExpressionAttributeValues: expressionAttributeValues,
+        ReturnValues: "ALL_NEW"
+      }));
+
+      console.log("✅ User info updated successfully:", result.Attributes);
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify(result.Attributes)
+      };
+    }
+
+    // 비밀번호만 변경한 경우
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ message: "Password updated successfully", userId })
+    };
+  } catch (error) {
+    console.error("❌ Error updating user info:", error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
 }
 
 // 사용자 역량 조회

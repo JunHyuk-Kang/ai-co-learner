@@ -93,7 +93,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Link to="/admin" onClick={() => setIsMobileMenuOpen(false)}>
                 <div className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive('/admin') ? 'bg-primary/10 text-primary' : 'text-gray-400 hover:bg-surface hover:text-gray-200'}`}>
                   <Shield size={18} />
-                  봇 관리 패널
+                  관리자 패널
                 </div>
               </Link>
             </>
