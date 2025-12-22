@@ -48,6 +48,30 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
 };
 
+// 권한 체크 헬퍼 함수
+async function checkUserRole(userId, allowedRoles) {
+  try {
+    const result = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId }
+    }));
+
+    if (!result.Item) {
+      return { authorized: false, error: "User not found" };
+    }
+
+    const userRole = result.Item.role || 'USER';
+    if (!allowedRoles.includes(userRole)) {
+      return { authorized: false, error: `Access denied. Required role: ${allowedRoles.join(' or ')}` };
+    }
+
+    return { authorized: true, role: userRole };
+  } catch (error) {
+    console.error("Error checking user role:", error);
+    return { authorized: false, error: "Failed to verify user role" };
+  }
+}
+
 export const handler = async (event) => {
   console.log("Received event:", JSON.stringify(event, null, 2));
 
@@ -112,7 +136,7 @@ export const handler = async (event) => {
     }
 
     if (method === 'GET' && path.includes('/admin/users')) {
-      return await getAllUsers(headers);
+      return await getAllUsers(event, headers);
     }
 
     if (method === 'POST' && path.includes('/admin/users/update-role')) {
@@ -470,6 +494,16 @@ async function sendChatMessageStream(event, headers) {
     console.log("Starting Bedrock streaming...");
 
     // 4. Bedrock 스트리밍 호출
+    const enhancedSystemPrompt = `${systemPrompt}
+
+응답 형식 지침:
+- 응답은 반드시 마크다운 형식으로 작성하세요.
+- 제목은 ## 또는 ###를 사용하세요.
+- 목록은 번호(1., 2.) 또는 불릿(-) 형식을 사용하세요.
+- 중요한 내용은 **굵게** 표시하세요.
+- 예시나 코드는 \`백틱\`으로 감싸세요.
+- 단락 구분을 명확히 하여 가독성을 높이세요.`;
+
     const streamCommand = new InvokeModelWithResponseStreamCommand({
       modelId: MODEL_ID,
       contentType: "application/json",
@@ -478,7 +512,7 @@ async function sendChatMessageStream(event, headers) {
         anthropic_version: "bedrock-2023-05-31",
         max_tokens: 500,
         temperature: 0.7,
-        system: systemPrompt,
+        system: enhancedSystemPrompt,
         messages: messages
       })
     });
@@ -736,7 +770,8 @@ async function createUserBot(event, headers) {
         createdAt: new Date().toISOString(),
         templateName: template.name,
         themeColor: template.themeColor || 'blue',
-        description: template.description || ''
+        description: template.description || '',
+        primaryCompetencies: template.primaryCompetencies || []
       }
     }));
 
@@ -752,7 +787,8 @@ async function createUserBot(event, headers) {
         createdAt: new Date().toISOString(),
         templateName: template.name,
         themeColor: template.themeColor || 'blue',
-        description: template.description || ''
+        description: template.description || '',
+        primaryCompetencies: template.primaryCompetencies || []
       })
     };
   } catch (error) {
@@ -1026,6 +1062,18 @@ async function trackUsage(userId, sessionId, inputTokens, outputTokens, modelId 
 async function createTemplate(event, headers) {
   try {
     const body = JSON.parse(event.body || "{}");
+    const { userId } = body;
+
+    // 권한 체크: SUPER_USER 또는 ADMIN만 가능
+    const roleCheck = await checkUserRole(userId, ['SUPER_USER', 'ADMIN']);
+    if (!roleCheck.authorized) {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: roleCheck.error })
+      };
+    }
+
     const {
       name,
       description,
@@ -1093,6 +1141,18 @@ async function createTemplate(event, headers) {
 async function updateTemplate(event, headers) {
   try {
     const body = JSON.parse(event.body || "{}");
+    const { userId } = body;
+
+    // 권한 체크: SUPER_USER 또는 ADMIN만 가능
+    const roleCheck = await checkUserRole(userId, ['SUPER_USER', 'ADMIN']);
+    if (!roleCheck.authorized) {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: roleCheck.error })
+      };
+    }
+
     const {
       templateId,
       name,
@@ -1181,7 +1241,17 @@ async function updateTemplate(event, headers) {
 // 템플릿 삭제
 async function deleteTemplate(event, headers) {
   const body = JSON.parse(event.body || "{}");
-  const { templateId } = body;
+  const { userId, templateId } = body;
+
+  // 권한 체크: SUPER_USER 또는 ADMIN만 가능
+  const roleCheck = await checkUserRole(userId, ['SUPER_USER', 'ADMIN']);
+  if (!roleCheck.authorized) {
+    return {
+      statusCode: 403,
+      headers,
+      body: JSON.stringify({ error: roleCheck.error })
+    };
+  }
 
   if (!templateId) {
     return {
@@ -1204,7 +1274,28 @@ async function deleteTemplate(event, headers) {
 }
 
 // 모든 사용자 조회
-async function getAllUsers(headers) {
+async function getAllUsers(event, headers) {
+  // userId를 쿼리 파라미터에서 가져옴
+  const userId = event.queryStringParameters?.userId;
+
+  if (!userId) {
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({ error: "Missing userId parameter" })
+    };
+  }
+
+  // 권한 체크: ADMIN만 가능
+  const roleCheck = await checkUserRole(userId, ['ADMIN']);
+  if (!roleCheck.authorized) {
+    return {
+      statusCode: 403,
+      headers,
+      body: JSON.stringify({ error: roleCheck.error })
+    };
+  }
+
   const response = await dynamoClient.send(new ScanCommand({
     TableName: USERS_TABLE
   }));
@@ -1219,25 +1310,36 @@ async function getAllUsers(headers) {
 // 사용자 역할 변경
 async function updateUserRole(event, headers) {
   const body = JSON.parse(event.body || "{}");
-  const { userId, role } = body;
+  const { adminUserId, userId, role } = body;
 
-  console.log("Looking for userId:", userId);
+  console.log("Admin userId:", adminUserId);
+  console.log("Target userId:", userId);
   console.log("New role:", role);
 
-  if (!userId || !role) {
+  if (!adminUserId || !userId || !role) {
     return {
       statusCode: 400,
       headers,
-      body: JSON.stringify({ error: "Missing required fields: userId, role" })
+      body: JSON.stringify({ error: "Missing required fields: adminUserId, userId, role" })
+    };
+  }
+
+  // 권한 체크: ADMIN만 가능
+  const roleCheck = await checkUserRole(adminUserId, ['ADMIN']);
+  if (!roleCheck.authorized) {
+    return {
+      statusCode: 403,
+      headers,
+      body: JSON.stringify({ error: roleCheck.error })
     };
   }
 
   // Validate role value
-  if (!['USER', 'ADMIN'].includes(role)) {
+  if (!['USER', 'SUPER_USER', 'ADMIN'].includes(role)) {
     return {
       statusCode: 400,
       headers,
-      body: JSON.stringify({ error: "Invalid role. Must be USER or ADMIN" })
+      body: JSON.stringify({ error: "Invalid role. Must be USER, SUPER_USER, or ADMIN" })
     };
   }
 
@@ -1281,10 +1383,29 @@ async function updateUserRole(event, headers) {
 async function getUsageStats(event, headers) {
   try {
     // Query parameters
+    const adminUserId = event.queryStringParameters?.adminUserId;
     const userId = event.queryStringParameters?.userId;
     const startDate = event.queryStringParameters?.startDate; // YYYY-MM-DD
     const endDate = event.queryStringParameters?.endDate; // YYYY-MM-DD
     const days = parseInt(event.queryStringParameters?.days || '30', 10);
+
+    if (!adminUserId) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Missing adminUserId parameter" })
+      };
+    }
+
+    // 권한 체크: ADMIN만 가능
+    const roleCheck = await checkUserRole(adminUserId, ['ADMIN']);
+    if (!roleCheck.authorized) {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: roleCheck.error })
+      };
+    }
 
     let allUsageData = [];
 
@@ -2434,6 +2555,7 @@ async function getRecommendedTemplates(event, headers) {
       .sort((a, b) => b.recommendationScore - a.recommendationScore)
       .slice(0, 3)
       .map(({ templateId, name, description, themeColor, baseType, primaryCompetencies, secondaryCompetencies, recommendationScore }) => ({
+        id: templateId,
         templateId,
         name,
         description,

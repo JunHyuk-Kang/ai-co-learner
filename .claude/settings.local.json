@@ -214,7 +214,14 @@
       "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSCLIV2\\\\aws.exe\" lambda update-function-code --function-name ai-co-learner-chat --zip-file fileb://lambda/chat-api/package.zip --region ap-northeast-2 --output json)",
       "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSCLIV2\\\\aws.exe\" iam get-role --role-name ai-co-learner-lambda-role --region ap-northeast-2 --query \"Role.AssumeRolePolicyDocument\" --output json)",
       "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSCLIV2\\\\aws.exe\" iam put-role-policy:*)",
-      "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSCLIV2\\\\aws.exe\" s3 sync dist s3://ai-co-learner-frontend-synnex --region ap-northeast-2 --delete)"
+      "Bash(\"C:\\\\Program Files\\\\Amazon\\\\AWSCLIV2\\\\aws.exe\" s3 sync dist s3://ai-co-learner-frontend-synnex --region ap-northeast-2 --delete)",
+      "Bash(\"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\" lambda update-function-code --function-name ai-co-learner-chat --zip-file fileb://lambda/chat-api/package.zip --region ap-northeast-2 --output json)",
+      "Bash(\"C:\\Program Files\\Amazon\\AWSCLIV2\\aws.exe\" logs tail /aws/lambda/ai-co-learner-chat --since 5m --region ap-northeast-2 --format short --filter-pattern \"create\")",
+      "Bash(npm run create-accounts:*)",
+      "Bash(call deploy.bat)",
+      "Bash(timeout /t 10 /nobreak)",
+      "Bash(aws lambda get-function:*)",
+      "Bash(aws s3 sync:*)"
     ],
     "deny": [],
     "ask": []

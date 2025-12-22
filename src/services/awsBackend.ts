@@ -249,9 +249,12 @@ export const BotService = {
     }
   },
 
-  createTemplate: async (templateData: any) => {
+  createTemplate: async (userId: string, templateData: any) => {
     try {
-      const data = await apiPost<any>('/admin/templates/create', templateData);
+      const data = await apiPost<any>('/admin/templates/create', {
+        userId,
+        ...templateData,
+      });
       return data;
     } catch (error) {
       console.error('Failed to create template:', error);
@@ -259,9 +262,10 @@ export const BotService = {
     }
   },
 
-  updateTemplate: async (templateId: string, templateData: any) => {
+  updateTemplate: async (userId: string, templateId: string, templateData: any) => {
     try {
       const data = await apiPost<any>('/admin/templates/update', {
+        userId,
         templateId,
         ...templateData,
       });
@@ -272,9 +276,10 @@ export const BotService = {
     }
   },
 
-  deleteTemplate: async (templateId: string) => {
+  deleteTemplate: async (userId: string, templateId: string) => {
     try {
       const data = await apiPost<any>('/admin/templates/delete', {
+        userId,
         templateId,
       });
       return data;
@@ -349,9 +354,9 @@ export interface UsageStatsResponse {
 }
 
 export const AdminService = {
-  getAllUsers: async () => {
+  getAllUsers: async (adminUserId: string) => {
     try {
-      const data = await apiGet<any>('/admin/users');
+      const data = await apiGet<any>(`/admin/users?userId=${adminUserId}`);
       return data;
     } catch (error) {
       console.error('Failed to get all users:', error);
@@ -359,9 +364,10 @@ export const AdminService = {
     }
   },
 
-  updateUserRole: async (userId: string, role: string) => {
+  updateUserRole: async (adminUserId: string, userId: string, role: string) => {
     try {
       const data = await apiPost<any>('/admin/users/update-role', {
+        adminUserId,
         userId,
         role,
       });
@@ -400,7 +406,7 @@ export const AdminService = {
     }
   },
 
-  getUsageStats: async (params?: {
+  getUsageStats: async (adminUserId: string, params?: {
     userId?: string;
     startDate?: string;
     endDate?: string;
@@ -408,12 +414,13 @@ export const AdminService = {
   }): Promise<UsageStatsResponse> => {
     try {
       const queryParams = new URLSearchParams();
+      queryParams.append('adminUserId', adminUserId);
       if (params?.userId) queryParams.append('userId', params.userId);
       if (params?.startDate) queryParams.append('startDate', params.startDate);
       if (params?.endDate) queryParams.append('endDate', params.endDate);
       if (params?.days) queryParams.append('days', params.days.toString());
 
-      const url = `/admin/usage${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const url = `/admin/usage?${queryParams.toString()}`;
       const data = await apiGet<UsageStatsResponse>(url);
       return data;
     } catch (error) {

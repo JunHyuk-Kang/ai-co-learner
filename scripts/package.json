@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "seed": "node seed-test-data.mjs"
+    "seed": "node seed-test-data.mjs",
+    "create-accounts": "node create-test-accounts.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.654.0",
     "@aws-sdk/client-dynamodb": "^3.654.0",
     "@aws-sdk/lib-dynamodb": "^3.654.0"
   }

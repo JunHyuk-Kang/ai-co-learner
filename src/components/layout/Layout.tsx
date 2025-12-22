@@ -85,7 +85,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
           )}
 
-          {user.role === Role.ADMIN && (
+          {(user.role === Role.ADMIN || user.role === Role.SUPER_USER) && (
             <>
               <div className="pt-4 pb-2">
                 <p className="px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">관리자</p>

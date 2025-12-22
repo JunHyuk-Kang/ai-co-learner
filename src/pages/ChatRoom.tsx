@@ -154,14 +154,6 @@ export const ChatRoom: React.FC = () => {
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-6 bg-[#0A0A0A]">
         <div className="max-w-3xl mx-auto">
-          <div className="bg-blue-900/20 border border-blue-900/50 p-3 rounded-lg mb-8 flex items-start gap-3">
-            <AlertCircle className="text-blue-400 shrink-0 mt-0.5" size={16} />
-            <p className="text-xs text-blue-200">
-              <span className="font-bold block mb-0.5">학습 목표: 질문 구체화하기</span>
-              이 에이전트는 사용자가 5W1H(누가, 언제, 어디서, 무엇을, 어떻게, 왜)를 명확히 할 때까지 답을 주지 않고 되묻습니다.
-            </p>
-          </div>
-
           {streamError && (
             <div className="bg-error/10 border border-error/30 p-3 rounded-lg mb-4 flex items-start gap-3">
               <AlertCircle className="text-error shrink-0 mt-0.5" size={16} />

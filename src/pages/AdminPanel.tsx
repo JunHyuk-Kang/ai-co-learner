@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { BotService, AdminService, UsageStatsResponse } from '../services/awsBackend';
-import { BotTemplate, User } from '../types';
+import { BotTemplate, User, Role } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Plus, Trash2, Save, Users, Bot, Search, Edit, DollarSign, TrendingUp, Activity } from 'lucide-react';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { useAuth } from '../contexts/AuthContext';
 
 export const AdminPanel: React.FC = () => {
+  const { user: currentUser } = useAuth();
   const [view, setView] = useState<'templates' | 'users' | 'usage'>('templates');
   const [templates, setTemplates] = useState<BotTemplate[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -38,10 +40,12 @@ export const AdminPanel: React.FC = () => {
   }, [view]);
 
   const loadData = async () => {
+    if (!currentUser) return;
+
     if (view === 'templates') {
         BotService.getTemplates().then(setTemplates);
-    } else if (view === 'users') {
-        AdminService.getAllUsers().then((users: any[]) => {
+    } else if (view === 'users' && currentUser.role === Role.ADMIN) {
+        AdminService.getAllUsers(currentUser.id).then((users: any[]) => {
           // Convert userId to id for frontend compatibility
           const convertedUsers = users.map(u => ({
             ...u,
@@ -49,14 +53,15 @@ export const AdminPanel: React.FC = () => {
           }));
           setUsers(convertedUsers);
         });
-    } else if (view === 'usage') {
+    } else if (view === 'usage' && currentUser.role === Role.ADMIN) {
         loadUsageStats();
     }
   };
 
   const loadUsageStats = async () => {
+    if (!currentUser) return;
     try {
-      const stats = await AdminService.getUsageStats({ days: usageDays });
+      const stats = await AdminService.getUsageStats(currentUser.id, { days: usageDays });
       setUsageStats(stats);
     } catch (error) {
       console.error('Failed to load usage stats:', error);
@@ -64,9 +69,9 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleCreate = async () => {
-    if (!newName || !newPrompt) return;
+    if (!currentUser || !newName || !newPrompt) return;
     try {
-      const newTmpl = await BotService.createTemplate({
+      const newTmpl = await BotService.createTemplate(currentUser.id, {
           name: newName,
           description: newDesc,
           systemPrompt: newPrompt,
@@ -101,9 +106,9 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleUpdate = async () => {
-    if (!editingTemplate || !newName || !newPrompt) return;
+    if (!currentUser || !editingTemplate || !newName || !newPrompt) return;
     try {
-      await BotService.updateTemplate(editingTemplate.id, {
+      await BotService.updateTemplate(currentUser.id, editingTemplate.id, {
         name: newName,
         description: newDesc,
         systemPrompt: newPrompt,
@@ -126,9 +131,9 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleDelete = async (templateId: string) => {
-    if (!confirm('정말 이 템플릿을 삭제하시겠습니까?')) return;
+    if (!currentUser || !confirm('정말 이 템플릿을 삭제하시겠습니까?')) return;
     try {
-      await BotService.deleteTemplate(templateId);
+      await BotService.deleteTemplate(currentUser.id, templateId);
       await loadData();
     } catch (error) {
       console.error('Failed to delete template:', error);
@@ -194,8 +199,9 @@ export const AdminPanel: React.FC = () => {
   };
 
   const handleUpdateUserRole = async (userId: string, newRole: string) => {
+    if (!currentUser) return;
     try {
-      await AdminService.updateUserRole(userId, newRole);
+      await AdminService.updateUserRole(currentUser.id, userId, newRole);
       await loadData();
       alert(`권한이 ${newRole}로 변경되었습니다.`);
     } catch (error) {
@@ -251,20 +257,24 @@ export const AdminPanel: React.FC = () => {
                 <Bot size={16} className="inline mr-1 md:mr-2" />
                 봇 템플릿
              </button>
-             <button
-                onClick={() => setView('users')}
-                className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all ${view === 'users' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
-             >
-                <Users size={16} className="inline mr-1 md:mr-2" />
-                사용자 관리
-             </button>
-             <button
-                onClick={() => setView('usage')}
-                className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all ${view === 'usage' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
-             >
-                <DollarSign size={16} className="inline mr-1 md:mr-2" />
-                사용량 & 비용
-             </button>
+             {currentUser?.role === Role.ADMIN && (
+               <>
+                 <button
+                    onClick={() => setView('users')}
+                    className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all ${view === 'users' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
+                 >
+                    <Users size={16} className="inline mr-1 md:mr-2" />
+                    사용자 관리
+                 </button>
+                 <button
+                    onClick={() => setView('usage')}
+                    className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all ${view === 'usage' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
+                 >
+                    <DollarSign size={16} className="inline mr-1 md:mr-2" />
+                    사용량 & 비용
+                 </button>
+               </>
+             )}
         </div>
       </header>
 
@@ -542,7 +552,13 @@ export const AdminPanel: React.FC = () => {
                                   </div>
                               </td>
                               <td className="px-6 py-4">
-                                  <span className={`px-2 py-1 rounded text-xs font-medium ${u.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-300' : 'bg-gray-700 text-gray-300'}`}>
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                    u.role === 'ADMIN'
+                                      ? 'bg-purple-500/20 text-purple-300'
+                                      : u.role === 'SUPER_USER'
+                                      ? 'bg-blue-500/20 text-blue-300'
+                                      : 'bg-gray-700 text-gray-300'
+                                  }`}>
                                     {u.role}
                                   </span>
                               </td>
@@ -568,6 +584,7 @@ export const AdminPanel: React.FC = () => {
                                       onChange={(e) => handleUpdateUserRole(u.id, e.target.value)}
                                     >
                                       <option value="USER">USER</option>
+                                      <option value="SUPER_USER">SUPER_USER</option>
                                       <option value="ADMIN">ADMIN</option>
                                     </select>
                                     <button

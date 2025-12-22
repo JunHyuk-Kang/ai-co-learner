@@ -131,15 +131,22 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleQuickCreate = async () => {
-    if (!user || !selectedTemplateId || !newBotName || !selectedTemplate) return;
+    if (!user || !selectedTemplateId || !newBotName || !selectedTemplate) {
+      console.error('Missing required data:', { user: !!user, selectedTemplateId, newBotName, selectedTemplate: !!selectedTemplate });
+      return;
+    }
     setIsCreating(true);
     try {
+      console.log('Creating bot:', { userId: user.id, templateId: selectedTemplateId, name: newBotName });
       await BotService.createUserBot(user.id, selectedTemplateId, newBotName);
       await loadBots();
       setIsQuickCreateOpen(false);
       setNewBotName('');
       setSelectedTemplateId('');
       setSelectedTemplate(null);
+    } catch (error) {
+      console.error('Failed to create bot:', error);
+      alert(`봇 생성에 실패했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
     } finally {
       setIsCreating(false);
     }

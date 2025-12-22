@@ -66,7 +66,7 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
-  if (!user || user.role !== Role.ADMIN) return <Navigate to="/" replace />;
+  if (!user || (user.role !== Role.ADMIN && user.role !== Role.SUPER_USER)) return <Navigate to="/" replace />;
   return <Layout>{children}</Layout>;
 };
 
