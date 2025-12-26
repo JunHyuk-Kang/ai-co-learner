@@ -164,6 +164,15 @@ export const ChatService = {
       });
 
       if (!response.ok) {
+        // 429 에러의 경우 상세 메시지 추출
+        if (response.status === 429) {
+          try {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'AI 서비스 일일 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+          } catch (e) {
+            throw new Error('AI 서비스 일일 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+          }
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 

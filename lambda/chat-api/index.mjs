@@ -1,11 +1,18 @@
-import { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
+// Bedrock imports - 주석 처리
+// import { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
+
+// Gemini imports - 활성화
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, ScanCommand, DeleteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { CognitoIdentityProviderClient, AdminSetUserPasswordCommand } from "@aws-sdk/client-cognito-identity-provider";
 
-// Bedrock 클라이언트 (us-east-1 - Cross Region)
-const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
+// Bedrock 클라이언트 - 주석 처리
+// const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
+
+// Google Gemini 클라이언트 활성화
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 // DynamoDB 클라이언트 (ap-northeast-2 - 서울)
 const dynamoClient = DynamoDBDocumentClient.from(
@@ -29,15 +36,21 @@ const ANALYTICS_TABLE = "ai-co-learner-learning-analytics";
 const ACHIEVEMENTS_TABLE = "ai-co-learner-user-achievements";
 const USAGE_TRACKING_TABLE = "ai-co-learner-usage-tracking";
 const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || "ap-northeast-2_OCntQ228q";
-// Claude 3 Haiku - 빠르고 저렴하며 한국어 성능 우수
-const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
+
+// Google Gemini 2.5 Flash
+const MODEL_ID = "gemini-2.5-flash";
 
 // 비용 계산 상수 (USD per 1M tokens)
 const PRICING = {
-  "anthropic.claude-3-haiku-20240307-v1:0": {
-    input: 0.25,
-    output: 1.25
+  "gemini-2.5-flash": {
+    input: 0.0,  // 무료 티어 (15 RPM, 1500 requests/day)
+    output: 0.0
   }
+  // Bedrock 모델 - 주석 처리
+  // "anthropic.claude-3-haiku-20240307-v1:0": {
+  //   input: 0.25,
+  //   output: 1.25
+  // }
 };
 
 // CORS headers defined at top level
@@ -313,34 +326,39 @@ async function sendChatMessage(event, headers) {
       assistant: item.aiMessage
     }));
 
-  // 5. Claude용 메시지 생성
-  const messages = buildClaudeMessages(message, conversationHistory);
+  // 5. Gemini용 대화 히스토리 구성
+  const geminiHistory = conversationHistory.flatMap(item => [
+    { role: "user", parts: [{ text: item.user }] },
+    { role: "model", parts: [{ text: item.assistant }] }
+  ]);
 
-  console.log("Sending to Claude:", JSON.stringify(messages).substring(0, 200) + "...");
+  console.log("Sending to Gemini:", message.substring(0, 100) + "...");
+  console.log("System Prompt:", systemPrompt.substring(0, 100) + "...");
 
-  // 6. Bedrock 호출 (Claude API 형식)
-  const bedrockResponse = await bedrockClient.send(new InvokeModelCommand({
-    modelId: MODEL_ID,
-    contentType: "application/json",
-    accept: "application/json",
-    body: JSON.stringify({
-      anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 500,
+  // 6. Gemini 호출 (시스템 프롬프트 적용)
+  const model = genAI.getGenerativeModel({
+    model: MODEL_ID,
+    systemInstruction: systemPrompt  // 봇 템플릿의 시스템 프롬프트 사용
+  });
+
+  const chat = model.startChat({
+    history: geminiHistory,
+    generationConfig: {
+      maxOutputTokens: 500,
       temperature: 0.7,
-      system: systemPrompt,
-      messages: messages
-    })
-  }));
+    },
+  });
 
-  // 7. Claude 응답 파싱
-  const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
-  const aiMessage = responseBody.content[0].text;
+  const result = await chat.sendMessage(message);
 
-  console.log("Bedrock response:", aiMessage);
+  // 7. Gemini 응답 파싱
+  const aiMessage = result.response.text();
+
+  console.log("Gemini response:", aiMessage);
 
   // 7-1. 사용량 추적 (토큰 사용량)
-  const inputTokens = responseBody.usage?.input_tokens || 0;
-  const outputTokens = responseBody.usage?.output_tokens || 0;
+  const inputTokens = result.response.usageMetadata?.promptTokenCount || 0;
+  const outputTokens = result.response.usageMetadata?.candidatesTokenCount || 0;
   await trackUsage(userId, sessionId, inputTokens, outputTokens, MODEL_ID);
 
   // 8. DynamoDB에 메시지 저장
@@ -488,36 +506,30 @@ async function sendChatMessageStream(event, headers) {
         assistant: item.aiMessage
       }));
 
-    // 3. Claude용 메시지 생성
-    const messages = buildClaudeMessages(message, conversationHistory);
+    // 3. Gemini용 대화 히스토리 구성
+    const geminiHistory = conversationHistory.flatMap(item => [
+      { role: "user", parts: [{ text: item.user }] },
+      { role: "model", parts: [{ text: item.assistant }] }
+    ]);
 
-    console.log("Starting Bedrock streaming...");
+    console.log("Starting Gemini streaming...");
+    console.log("System Prompt:", systemPrompt.substring(0, 100) + "...");
 
-    // 4. Bedrock 스트리밍 호출
-    const enhancedSystemPrompt = `${systemPrompt}
-
-응답 형식 지침:
-- 응답은 반드시 마크다운 형식으로 작성하세요.
-- 제목은 ## 또는 ###를 사용하세요.
-- 목록은 번호(1., 2.) 또는 불릿(-) 형식을 사용하세요.
-- 중요한 내용은 **굵게** 표시하세요.
-- 예시나 코드는 \`백틱\`으로 감싸세요.
-- 단락 구분을 명확히 하여 가독성을 높이세요.`;
-
-    const streamCommand = new InvokeModelWithResponseStreamCommand({
-      modelId: MODEL_ID,
-      contentType: "application/json",
-      accept: "application/json",
-      body: JSON.stringify({
-        anthropic_version: "bedrock-2023-05-31",
-        max_tokens: 500,
-        temperature: 0.7,
-        system: enhancedSystemPrompt,
-        messages: messages
-      })
+    // 4. Gemini 스트리밍 호출 (시스템 프롬프트 적용)
+    const model = genAI.getGenerativeModel({
+      model: MODEL_ID,
+      systemInstruction: systemPrompt  // 봇 템플릿의 시스템 프롬프트 사용
     });
 
-    const response = await bedrockClient.send(streamCommand);
+    const chat = model.startChat({
+      history: geminiHistory,
+      generationConfig: {
+        maxOutputTokens: 500,
+        temperature: 0.7,
+      },
+    });
+
+    const result = await chat.sendMessageStream(message);
 
     // 5. 스트림 처리 및 전체 응답 수집
     let fullAiMessage = "";
@@ -525,33 +537,23 @@ async function sendChatMessageStream(event, headers) {
     let outputTokens = 0;
     const chunks = [];
 
-    for await (const event of response.body) {
-      if (event.chunk) {
-        const chunk = JSON.parse(new TextDecoder().decode(event.chunk.bytes));
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      fullAiMessage += chunkText;
+      chunks.push({
+        type: 'chunk',
+        text: chunkText
+      });
+    }
 
-        if (chunk.type === 'content_block_delta') {
-          const text = chunk.delta?.text || '';
-          fullAiMessage += text;
-          chunks.push({
-            type: 'chunk',
-            text: text
-          });
-        }
-
-        // 토큰 사용량 수집
-        if (chunk.type === 'message_start') {
-          inputTokens = chunk.message?.usage?.input_tokens || 0;
-        }
-        if (chunk.type === 'message_delta') {
-          outputTokens = chunk.usage?.output_tokens || 0;
-        }
-      }
+    // 토큰 사용량 수집 (Gemini API에서 제공)
+    const response = await result.response;
+    if (response.usageMetadata) {
+      inputTokens = response.usageMetadata.promptTokenCount || 0;
+      outputTokens = response.usageMetadata.candidatesTokenCount || 0;
     }
 
     console.log("Streaming completed. Full message:", fullAiMessage);
-
-    // 5-1. 사용량 추적
-    await trackUsage(userId, sessionId, inputTokens, outputTokens, MODEL_ID);
 
     // 6. DynamoDB에 메시지 저장 (스트림 완료 후)
     const timestamp = Date.now();
@@ -572,7 +574,12 @@ async function sendChatMessageStream(event, headers) {
       }
     }));
 
-    // 7. 스트리밍 응답 반환 (newline-delimited JSON)
+    // 7. 사용량 추적 (비동기, 응답에 영향 없음)
+    trackUsage(userId, sessionId, inputTokens, outputTokens, MODEL_ID).catch(err => {
+      console.error("Failed to track usage (non-blocking):", err);
+    });
+
+    // 8. 스트리밍 응답 반환 (newline-delimited JSON)
     const streamResponse = chunks.map(c => JSON.stringify(c)).join('\n') +
       '\n' + JSON.stringify({ type: 'done', messageId, timestamp });
 
@@ -589,6 +596,38 @@ async function sendChatMessageStream(event, headers) {
 
   } catch (error) {
     console.error("Streaming error:", error);
+
+    // Gemini API 에러 처리
+    if (error.message?.includes('API key')) {
+      return {
+        statusCode: 401,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          error: 'Gemini API 키가 유효하지 않습니다.',
+          errorCode: 'INVALID_API_KEY',
+          type: error.name
+        })
+      };
+    }
+
+    if (error.message?.includes('quota') || error.message?.includes('limit')) {
+      return {
+        statusCode: 429,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          error: 'AI 서비스 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요.',
+          errorCode: 'QUOTA_EXCEEDED',
+          type: error.name
+        })
+      };
+    }
+
     return {
       statusCode: 500,
       headers: {
@@ -596,7 +635,7 @@ async function sendChatMessageStream(event, headers) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        error: error.message,
+        error: error.message || 'AI 응답 생성 중 오류가 발생했습니다.',
         type: error.name
       })
     };
@@ -2149,22 +2188,16 @@ async function analyzeAnswerWithClaude(question, answer) {
 JSON만 반환해주세요.`;
 
   try {
-    const response = await bedrockClient.send(new InvokeModelCommand({
-      modelId: MODEL_ID,
-      contentType: "application/json",
-      accept: "application/json",
-      body: JSON.stringify({
-        anthropic_version: "bedrock-2023-05-31",
-        max_tokens: 1000,
+    const model = genAI.getGenerativeModel({
+      model: MODEL_ID,
+      generationConfig: {
+        maxOutputTokens: 1000,
         temperature: 0.3,
-        messages: [
-          { role: "user", content: prompt }
-        ]
-      })
-    }));
+      },
+    });
 
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-    const analysisText = responseBody.content[0].text;
+    const result = await model.generateContent(prompt);
+    const analysisText = result.response.text();
 
     // JSON 추출 (```json ``` 태그가 있을 수 있음)
     const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
@@ -2174,7 +2207,7 @@ JSON만 반환해주세요.`;
 
     return JSON.parse(analysisText);
   } catch (error) {
-    console.error("Claude analysis error:", error);
+    console.error("Gemini analysis error:", error);
     throw error;
   }
 }
