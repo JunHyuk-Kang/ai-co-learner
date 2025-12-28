@@ -13,14 +13,14 @@ const cognitoClient = new CognitoIdentityProviderClient({ region: REGION });
 const dynamoClient = new DynamoDBClient({ region: REGION });
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
 
-async function createTestAccount(index) {
+async function createTestAccount(index, total) {
   const email = `test${index}@test.com`;
   const password = "Test123!";
   const organization = "어정중학교";
   const name = `테스트${index}`;
 
   try {
-    console.log(`[${index}/120] Creating account: ${email}`);
+    console.log(`[${index}/${total}] Creating account: ${email}`);
 
     // 1. Cognito 사용자 생성
     const createUserCommand = new AdminCreateUserCommand({
@@ -70,11 +70,11 @@ async function createTestAccount(index) {
 
     await docClient.send(putCommand);
 
-    console.log(`✅ [${index}/120] Successfully created: ${email}`);
+    console.log(`✅ [${index}/${total}] Successfully created: ${email}`);
     return { success: true, email, userId };
 
   } catch (error) {
-    console.error(`❌ [${index}/120] Failed to create ${email}:`, error.message);
+    console.error(`❌ [${index}/${total}] Failed to create ${email}:`, error.message);
     return { success: false, email, error: error.message };
   }
 }
@@ -82,16 +82,20 @@ async function createTestAccount(index) {
 async function createAllAccounts() {
   console.log("🚀 Starting test account creation...\n");
 
+  const START_INDEX = 121;
+  const END_INDEX = 130;
+  const TOTAL_COUNT = END_INDEX - START_INDEX + 1;
+
   const results = {
-    total: 120,
+    total: TOTAL_COUNT,
     success: 0,
     failed: 0,
     errors: []
   };
 
   // 동시 실행을 방지하기 위해 순차 실행 (Rate limit 방지)
-  for (let i = 1; i <= 120; i++) {
-    const result = await createTestAccount(i);
+  for (let i = START_INDEX; i <= END_INDEX; i++) {
+    const result = await createTestAccount(i, END_INDEX);
 
     if (result.success) {
       results.success++;

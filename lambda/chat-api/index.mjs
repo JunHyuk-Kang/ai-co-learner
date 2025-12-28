@@ -1,17 +1,11 @@
-// Bedrock imports - 주석 처리
-// import { BedrockRuntimeClient, InvokeModelCommand, InvokeModelWithResponseStreamCommand } from "@aws-sdk/client-bedrock-runtime";
-
-// Gemini imports - 활성화
+// Google Gemini imports
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, UpdateCommand, ScanCommand, DeleteCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { CognitoIdentityProviderClient, AdminSetUserPasswordCommand } from "@aws-sdk/client-cognito-identity-provider";
 
-// Bedrock 클라이언트 - 주석 처리
-// const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
-
-// Google Gemini 클라이언트 활성화
+// Google Gemini 클라이언트
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 // DynamoDB 클라이언트 (ap-northeast-2 - 서울)
@@ -43,14 +37,9 @@ const MODEL_ID = "gemini-2.5-flash";
 // 비용 계산 상수 (USD per 1M tokens)
 const PRICING = {
   "gemini-2.5-flash": {
-    input: 0.0,  // 무료 티어 (15 RPM, 1500 requests/day)
-    output: 0.0
+    input: 0.075,   // Gemini 2.5 Flash 입력 토큰 가격
+    output: 0.30    // Gemini 2.5 Flash 출력 토큰 가격
   }
-  // Bedrock 모델 - 주석 처리
-  // "anthropic.claude-3-haiku-20240307-v1:0": {
-  //   input: 0.25,
-  //   output: 1.25
-  // }
 };
 
 // CORS headers defined at top level
@@ -60,6 +49,53 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token",
   "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
 };
+
+// Exponential Backoff 재시도 설정
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelay: 1000,  // 1초
+  maxDelay: 10000,     // 10초
+  backoffMultiplier: 2
+};
+
+// Exponential Backoff 재시도 헬퍼 함수
+async function retryWithBackoff(fn, retries = RETRY_CONFIG.maxRetries) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // 재시도 가능한 에러인지 확인
+      const isRetryable =
+        error.message?.includes('quota') ||
+        error.message?.includes('limit') ||
+        error.message?.includes('RESOURCE_EXHAUSTED') ||
+        error.status === 429 ||
+        error.status === 503;
+
+      // 재시도 불가능한 에러이거나 마지막 시도인 경우
+      if (!isRetryable || attempt === retries) {
+        throw error;
+      }
+
+      // Exponential backoff 계산
+      const delay = Math.min(
+        RETRY_CONFIG.initialDelay * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt),
+        RETRY_CONFIG.maxDelay
+      );
+
+      console.log(`Retry attempt ${attempt + 1}/${retries} after ${delay}ms delay. Error: ${error.message}`);
+
+      // 대기
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
 
 // 권한 체크 헬퍼 함수
 async function checkUserRole(userId, allowedRoles) {
@@ -515,7 +551,7 @@ async function sendChatMessageStream(event, headers) {
     console.log("Starting Gemini streaming...");
     console.log("System Prompt:", systemPrompt.substring(0, 100) + "...");
 
-    // 4. Gemini 스트리밍 호출 (시스템 프롬프트 적용)
+    // 4. Gemini 스트리밍 호출 (재시도 로직 적용)
     const model = genAI.getGenerativeModel({
       model: MODEL_ID,
       systemInstruction: systemPrompt  // 봇 템플릿의 시스템 프롬프트 사용
@@ -529,29 +565,39 @@ async function sendChatMessageStream(event, headers) {
       },
     });
 
-    const result = await chat.sendMessageStream(message);
+    // 재시도 로직으로 감싸서 스트리밍 호출
+    const { fullAiMessage, inputTokens, outputTokens, chunks } = await retryWithBackoff(async () => {
+      const result = await chat.sendMessageStream(message);
 
-    // 5. 스트림 처리 및 전체 응답 수집
-    let fullAiMessage = "";
-    let inputTokens = 0;
-    let outputTokens = 0;
-    const chunks = [];
+      // 5. 스트림 처리 및 전체 응답 수집
+      let fullMsg = "";
+      let inTokens = 0;
+      let outTokens = 0;
+      const chunkList = [];
 
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      fullAiMessage += chunkText;
-      chunks.push({
-        type: 'chunk',
-        text: chunkText
-      });
-    }
+      for await (const chunk of result.stream) {
+        const chunkText = chunk.text();
+        fullMsg += chunkText;
+        chunkList.push({
+          type: 'chunk',
+          text: chunkText
+        });
+      }
 
-    // 토큰 사용량 수집 (Gemini API에서 제공)
-    const response = await result.response;
-    if (response.usageMetadata) {
-      inputTokens = response.usageMetadata.promptTokenCount || 0;
-      outputTokens = response.usageMetadata.candidatesTokenCount || 0;
-    }
+      // 토큰 사용량 수집 (Gemini API에서 제공)
+      const response = await result.response;
+      if (response.usageMetadata) {
+        inTokens = response.usageMetadata.promptTokenCount || 0;
+        outTokens = response.usageMetadata.candidatesTokenCount || 0;
+      }
+
+      return {
+        fullAiMessage: fullMsg,
+        inputTokens: inTokens,
+        outputTokens: outTokens,
+        chunks: chunkList
+      };
+    });
 
     console.log("Streaming completed. Full message:", fullAiMessage);
 
@@ -1042,7 +1088,7 @@ async function updateUserProfile(event, headers) {
   }
 }
 
-function buildClaudeMessages(userMessage, conversationHistory) {
+function buildGeminiMessages(userMessage, conversationHistory) {
   const messages = [];
 
   // 대화 히스토리 추가
@@ -1080,7 +1126,7 @@ async function trackUsage(userId, sessionId, inputTokens, outputTokens, modelId 
         outputTokens,
         totalTokens,
         estimatedCost: parseFloat(estimatedCost.toFixed(6)),
-        service: 'bedrock',
+        service: 'gemini',
         operation: 'chat',
         modelId,
         date: new Date().toISOString().split('T')[0], // YYYY-MM-DD
@@ -2159,8 +2205,8 @@ async function startAssessment(event, headers) {
   };
 }
 
-// Claude를 사용하여 답변 분석
-async function analyzeAnswerWithClaude(question, answer) {
+// Gemini를 사용하여 답변 분석
+async function analyzeAnswerWithGemini(question, answer) {
   const prompt = `당신은 학습자의 역량을 분석하는 전문가입니다. 다음 질문과 답변을 분석하여 6가지 역량을 1-10점으로 평가해주세요.
 
 질문: ${question}
@@ -2196,8 +2242,11 @@ JSON만 반환해주세요.`;
       },
     });
 
-    const result = await model.generateContent(prompt);
-    const analysisText = result.response.text();
+    // 재시도 로직 적용
+    const analysisText = await retryWithBackoff(async () => {
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    });
 
     // JSON 추출 (```json ``` 태그가 있을 수 있음)
     const jsonMatch = analysisText.match(/\{[\s\S]*\}/);

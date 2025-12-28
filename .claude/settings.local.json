@@ -221,7 +221,21 @@
       "Bash(call deploy.bat)",
       "Bash(timeout /t 10 /nobreak)",
       "Bash(aws lambda get-function:*)",
-      "Bash(aws s3 sync:*)"
+      "Bash(aws s3 sync:*)",
+      "Bash(node create-test-accounts.mjs:*)",
+      "Bash(aws dynamodb query:*)",
+      "Bash(aws dynamodb scan:*)",
+      "Bash(aws dynamodb describe-table:*)",
+      "Bash(aws dynamodb delete-item:*)",
+      "Bash(./deploy.bat)",
+      "Bash(aws logs tail:*)",
+      "Bash(aws lambda list-functions:*)",
+      "Bash(MSYS_NO_PATHCONV=1 aws logs tail:*)",
+      "Bash(.deploy.bat)",
+      "Bash(cmd.exe /c deploy.bat:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(cmd /c deploy.bat)",
+      "Bash(powershell \"Remove-Item -Path function.zip -ErrorAction SilentlyContinue; Compress-Archive -Path index.mjs,package.json,node_modules -DestinationPath function.zip -Force\")"
     ],
     "deny": [],
     "ask": []

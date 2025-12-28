@@ -1,18 +1,68 @@
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+// Gemini imports
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand, BatchWriteCommand } from "@aws-sdk/lib-dynamodb";
 
-const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
+// Google Gemini 클라이언트
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
 const dynamoClient = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: "ap-northeast-2" })
 );
 
 const SESSIONS_TABLE = process.env.SESSIONS_TABLE || "ai-co-learner-chat-sessions";
 const ANALYTICS_TABLE = process.env.ANALYTICS_TABLE || "ai-co-learner-learning-analytics";
-const MODEL_ID = process.env.MODEL_ID || "anthropic.claude-3-haiku-20240307-v1:0";
+const MODEL_ID = "gemini-2.5-flash";
 
 const BATCH_SIZE = 30; // 한 번에 분석할 메시지 수
 const LOOKBACK_MINUTES = 5; // 최근 5분간 메시지 조회
+
+// Exponential Backoff 재시도 설정
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelay: 1000,  // 1초
+  maxDelay: 10000,     // 10초
+  backoffMultiplier: 2
+};
+
+// Exponential Backoff 재시도 헬퍼 함수
+async function retryWithBackoff(fn, retries = RETRY_CONFIG.maxRetries) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      // 재시도 가능한 에러인지 확인
+      const isRetryable =
+        error.message?.includes('quota') ||
+        error.message?.includes('limit') ||
+        error.message?.includes('RESOURCE_EXHAUSTED') ||
+        error.status === 429 ||
+        error.status === 503;
+
+      // 재시도 불가능한 에러이거나 마지막 시도인 경우
+      if (!isRetryable || attempt === retries) {
+        throw error;
+      }
+
+      // Exponential backoff 계산
+      const delay = Math.min(
+        RETRY_CONFIG.initialDelay * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt),
+        RETRY_CONFIG.maxDelay
+      );
+
+      console.log(`Retry attempt ${attempt + 1}/${retries} after ${delay}ms delay. Error: ${error.message}`);
+
+      // 대기
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
 
 export const handler = async (event) => {
   console.log("🚀 Starting batch message analysis...");
@@ -88,35 +138,32 @@ async function getRecentMessages() {
 async function analyzeBatch(messages) {
   const batchPrompt = buildBatchAnalysisPrompt(messages);
 
-  console.log(`📤 Sending batch to Claude (${messages.length} messages)...`);
+  console.log(`📤 Sending batch to Gemini (${messages.length} messages)...`);
 
-  const bedrockResponse = await bedrockClient.send(new InvokeModelCommand({
-    modelId: MODEL_ID,
-    contentType: "application/json",
-    accept: "application/json",
-    body: JSON.stringify({
-      anthropic_version: "bedrock-2023-05-31",
-      max_tokens: 4000,
-      temperature: 0.3,
-      messages: [
-        { role: "user", content: batchPrompt }
-      ]
-    })
-  }));
+  const analysisResults = await retryWithBackoff(async () => {
+    const model = genAI.getGenerativeModel({
+      model: MODEL_ID,
+      generationConfig: {
+        maxOutputTokens: 4000,
+        temperature: 0.3
+      }
+    });
 
-  const responseBody = JSON.parse(new TextDecoder().decode(bedrockResponse.body));
-  const analysisText = responseBody.content[0].text;
+    const result = await model.generateContent(batchPrompt);
+    const response = await result.response;
+    const analysisText = response.text();
 
-  console.log(`📥 Received analysis from Claude`);
+    console.log(`📥 Received analysis from Gemini`);
 
-  // JSON 배열 추출
-  const jsonMatch = analysisText.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) {
-    console.error("Failed to extract JSON array from response:", analysisText.substring(0, 200));
-    throw new Error("Failed to parse batch analysis response");
-  }
+    // JSON 배열 추출
+    const jsonMatch = analysisText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.error("Failed to extract JSON array from response:", analysisText.substring(0, 200));
+      throw new Error("Failed to parse batch analysis response");
+    }
 
-  const analysisResults = JSON.parse(jsonMatch[0]);
+    return JSON.parse(jsonMatch[0]);
+  });
 
   // 메시지 정보와 분석 결과 매핑
   return analysisResults.map((result, index) => ({

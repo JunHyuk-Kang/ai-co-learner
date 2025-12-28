@@ -1,15 +1,60 @@
-import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+// Gemini imports
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-const bedrockClient = new BedrockRuntimeClient({ region: "us-east-1" });
+// Google Gemini 클라이언트
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+
 const dynamoClient = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: "ap-northeast-2" })
 );
 
 const ASSESSMENTS_TABLE = "ai-co-learner-assessments";
 const COMPETENCIES_TABLE = "ai-co-learner-user-competencies";
-const MODEL_ID = "anthropic.claude-3-haiku-20240307-v1:0";
+const MODEL_ID = "gemini-2.5-flash";
+
+// Exponential Backoff 재시도 설정
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  initialDelay: 1000,
+  maxDelay: 10000,
+  backoffMultiplier: 2
+};
+
+// Exponential Backoff 재시도 헬퍼 함수
+async function retryWithBackoff(fn, retries = RETRY_CONFIG.maxRetries) {
+  let lastError;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      const isRetryable =
+        error.message?.includes('quota') ||
+        error.message?.includes('limit') ||
+        error.message?.includes('RESOURCE_EXHAUSTED') ||
+        error.status === 429 ||
+        error.status === 503;
+
+      if (!isRetryable || attempt === retries) {
+        throw error;
+      }
+
+      const delay = Math.min(
+        RETRY_CONFIG.initialDelay * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt),
+        RETRY_CONFIG.maxDelay
+      );
+
+      console.log(`Retry attempt ${attempt + 1}/${retries} after ${delay}ms delay. Error: ${error.message}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError;
+}
 
 // 역량 평가를 위한 질문 템플릿
 const ASSESSMENT_QUESTIONS = [
@@ -55,8 +100,8 @@ const ASSESSMENT_QUESTIONS = [
   }
 ];
 
-// Claude를 사용하여 답변 분석
-async function analyzeAnswerWithClaude(question, answer) {
+// Gemini를 사용하여 답변 분석
+async function analyzeAnswerWithGemini(question, answer) {
   const prompt = `당신은 학습자의 역량을 분석하는 전문가입니다. 다음 질문과 답변을 분석하여 6가지 역량을 1-10점으로 평가해주세요.
 
 질문: ${question}
@@ -84,32 +129,29 @@ async function analyzeAnswerWithClaude(question, answer) {
 JSON만 반환해주세요.`;
 
   try {
-    const response = await bedrockClient.send(new InvokeModelCommand({
-      modelId: MODEL_ID,
-      contentType: "application/json",
-      accept: "application/json",
-      body: JSON.stringify({
-        anthropic_version: "bedrock-2023-05-31",
-        max_tokens: 1000,
-        temperature: 0.3,
-        messages: [
-          { role: "user", content: prompt }
-        ]
-      })
-    }));
+    return await retryWithBackoff(async () => {
+      const model = genAI.getGenerativeModel({
+        model: MODEL_ID,
+        generationConfig: {
+          maxOutputTokens: 1000,
+          temperature: 0.3
+        }
+      });
 
-    const responseBody = JSON.parse(new TextDecoder().decode(response.body));
-    const analysisText = responseBody.content[0].text;
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const analysisText = response.text();
 
-    // JSON 추출 (```json ``` 태그가 있을 수 있음)
-    const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
-    }
+      // JSON 추출 (```json ``` 태그가 있을 수 있음)
+      const jsonMatch = analysisText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
 
-    return JSON.parse(analysisText);
+      return JSON.parse(analysisText);
+    });
   } catch (error) {
-    console.error("Claude analysis error:", error);
+    console.error("Gemini analysis error:", error);
     throw error;
   }
 }
@@ -161,8 +203,8 @@ export async function submitAnswer(userId, assessmentId, questionId, answer) {
 
   const question = assessment.questions[questionIndex];
 
-  // 2. Claude로 답변 분석
-  const analysis = await analyzeAnswerWithClaude(question.question, answer);
+  // 2. Gemini로 답변 분석
+  const analysis = await analyzeAnswerWithGemini(question.question, answer);
 
   // 3. 답변 및 분석 결과 저장
   const answerData = {

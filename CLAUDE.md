@@ -61,13 +61,12 @@ ai-co-learner/
 - **learning-analytics** (1년 TTL): 분석 데이터 장기 보관
 - **배치 분석**: 5분마다 최근 메시지 분석 (비용 최적화)
 
-### 3. AWS 리소스
+### 3. AWS 리소스 & AI 모델
 - **리전**: ap-northeast-2 (Lambda, DynamoDB, API Gateway, Cognito)
-- **Bedrock**: us-east-1 (Claude 3 Haiku)
+- **AI 모델**: Google Gemini 2.5 Flash (비용 효율성 최적화)
 - **API URL**: `https://oz20zs5lfc.execute-api.ap-northeast-2.amazonaws.com/prod`
 - **Cognito User Pool**: `ap-northeast-2_OCntQ228q`
 - **S3 Frontend**: `ai-co-learner-frontend-synnex`
-- **Bedrock Model**: `anthropic.claude-3-haiku-20240307-v1:0`
 
 ---
 
@@ -86,12 +85,16 @@ npm install
 
 ### 환경 변수 (.env.local)
 ```env
+# AWS Cognito
 VITE_COGNITO_USER_POOL_ID=ap-northeast-2_OCntQ228q
 VITE_COGNITO_CLIENT_ID=4csdt3gpkfujrg1lslu4fgo5b1
 VITE_COGNITO_REGION=ap-northeast-2
+
+# API Gateway
 VITE_API_GATEWAY_URL=https://oz20zs5lfc.execute-api.ap-northeast-2.amazonaws.com/prod
-BEDROCK_REGION=us-east-1
-BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
+
+# Google Gemini (Lambda 환경 변수로 설정)
+# GEMINI_API_KEY는 Lambda 함수 환경 변수에서 설정
 ```
 
 ### DynamoDB 테이블 (10개)
@@ -109,9 +112,10 @@ BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
 ### 코드 수정 시
 - Lambda 함수는 `index.mjs` (ES Module)
 - DynamoDB 쿼리 시 반드시 PK+SK 사용
-- Bedrock 리전 cross-region 호출 (서울→버지니아)
+- Google Gemini API 사용 (`@google/generative-ai` 패키지)
 - **모든 Lambda 응답에 CORS 헤더 포함 필수** (`Access-Control-Allow-Origin: *`)
 - 스트리밍 응답: newline-delimited JSON 형식
+- Exponential Backoff 재시도 로직 포함 (Rate Limit 대응)
 
 ---
 
@@ -124,9 +128,10 @@ BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
 - 사용자 인증 및 역할 관리 (USER, SUPER_USER, ADMIN)
 
 **AI 채팅 시스템**
-- Bedrock Claude 3 Haiku 기반 실시간 스트리밍 채팅
+- Google Gemini 2.5 Flash 기반 실시간 스트리밍 채팅
 - 다중 AI 봇 시스템 (9개 템플릿)
 - 채팅 세션 관리 및 히스토리
+- Rate Limit 대응 (Exponential Backoff 재시도)
 
 **역량 분석 시스템**
 - 초기 역량 진단 (8문항, 6개 역량 분석)
@@ -149,7 +154,7 @@ BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
 **관리 기능**
 - 사용량 추적 & 비용 관리 시스템
   - 실시간 토큰 사용량 추적 (입력/출력 토큰 분리)
-  - 사용자별 비용 집계 (Claude 3 Haiku 요금 기준)
+  - 사용자별 비용 집계 (Gemini 2.5 Flash 요금 기준)
   - 관리자 대시보드 (일별 차트, 월간 예상 비용)
   - 기간별 필터링 (7/30/90일)
 - 테스트 계정 대량 생성 도구 (학교용)
@@ -229,8 +234,13 @@ return {
 - **주의**: 에러 응답(`catch` 블록)에도 CORS 헤더 필수!
 
 ### Lambda 타임아웃
-**증상**: Bedrock 응답 대기 중 타임아웃 발생
+**증상**: AI 모델 응답 대기 중 타임아웃 발생
 **해결**: Lambda 설정에서 타임아웃 30초 → 60초 증가
+
+### Gemini Rate Limit 에러
+**증상**: `RESOURCE_EXHAUSTED` 또는 429 에러 발생
+**해결**: Exponential Backoff 재시도 로직이 자동으로 처리 (최대 3회 재시도)
+**추가 조치**: 무료 할당량 초과 시 유료 API 키로 전환 필요
 
 ### DynamoDB 비용 급증
 **원인**: Scan 사용 또는 TTL 미설정
@@ -241,7 +251,7 @@ return {
 
 ### 스트리밍 채팅 응답 끊김
 **증상**: 스트리밍 중간에 연결 종료
-**원인**: Bedrock 응답 파싱 오류
+**원인**: Gemini 스트리밍 응답 파싱 오류
 **해결**: newline-delimited JSON 파싱 로직 확인
 
 ### 테스트 계정 생성 실패
@@ -298,19 +308,21 @@ return {
 - **React Router** 7.9.6 - 라우팅
 
 ### Lambda 함수
-- **@aws-sdk/client-bedrock-runtime** - Bedrock AI 호출
+- **@google/generative-ai** - Google Gemini AI 호출
 - **@aws-sdk/client-dynamodb** - DynamoDB 작업
 - **@aws-sdk/lib-dynamodb** - DynamoDB Document Client
 - **@aws-sdk/client-cognito-identity-provider** - Cognito 관리
+- **@aws-sdk/client-lambda** - Lambda 호출 (배치 분석)
 
 ---
 
 ## 비용 추정 (월간)
 
 ### 예상 사용량: 100,000 메시지/월
-- **Claude 3 Haiku API**: ~$26/월
-  - 입력 토큰: $0.25/1M tokens
-  - 출력 토큰: $1.25/1M tokens
+- **Gemini 2.5 Flash API**: ~$8/월 (**70% 절감**)
+  - 입력 토큰: $0.075/1M tokens
+  - 출력 토큰: $0.30/1M tokens
+  - Claude 3 Haiku 대비 3-4배 저렴
 - **DynamoDB**: ~$0.40/월
   - On-Demand 요금제
   - TTL 자동 삭제로 비용 최적화
@@ -319,7 +331,12 @@ return {
 - **API Gateway**: 무시 가능
 - **S3 + CloudFront**: ~$0.10/월
 
-**총 월간 비용**: 약 **$27** (50-100명 동시 사용자 기준)
+**총 월간 비용**: 약 **$9** (50-100명 동시 사용자 기준)
+
+### 모델 선택 이유
+- **Gemini 2.5 Flash 선택**: 비용 효율성 최우선 (학교용 프로젝트)
+- **Gemini 3.0 Flash 미사용**: 성능은 우수하지만 가격 6-10배 비쌈 ($0.50/$3.00)
+- 현재 기능(채팅, 역량 분석)에는 2.5 Flash로 충분
 
 ---
 
@@ -334,6 +351,12 @@ return {
 ---
 
 ## 최근 주요 업데이트
+
+### 2025-12-26
+- **AI 모델 전환**: Claude 3 Haiku → Google Gemini 2.5 Flash
+- **비용 70% 절감**: 월 $27 → $9 (입력 $0.075, 출력 $0.30)
+- **Exponential Backoff 재시도 로직 추가**: Rate Limit 대응
+- **CLAUDE.md 업데이트**: Gemini 관련 정보 전면 반영
 
 ### 2025-12-22
 - **CLAUDE.md 전면 개정**: 프로젝트 전체 구조 재정리
@@ -351,4 +374,4 @@ return {
 
 ---
 
-**마지막 업데이트**: 2025-12-22
+**마지막 업데이트**: 2025-12-26
