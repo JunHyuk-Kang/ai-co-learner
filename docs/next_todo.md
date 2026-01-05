@@ -709,6 +709,140 @@ npm run build
 
 ---
 
+#### 17. 퀘스트 시스템 고도화 (AI 기반 동적 생성)
+**현재 문제:**
+- 고정된 8개 템플릿만 존재 (conversation 3개, challenge 2개, reflection 2개)
+- 같은 역량이 계속 낮으면 동일한 퀘스트 반복 출제 가능
+- 사용자 학습 이력, 관심사, 봇 사용 패턴 미반영
+- 퀘스트 제목, 설명, 조건이 모두 하드코딩되어 있음
+
+**개선 방안:**
+
+**1. AI 기반 동적 퀘스트 생성**
+```javascript
+// quest-generator Lambda 개선
+async function generatePersonalizedQuest(userId, targetCompetency) {
+  // 최근 7일 대화 내용, 봇 사용 이력, 관심 주제 분석
+  const userContext = await analyzeUserContext(userId);
+
+  // Gemini API로 맞춤형 퀘스트 생성
+  const prompt = `
+    사용자 정보:
+    - 약점 역량: ${targetCompetency}
+    - 최근 대화 주제: ${userContext.topics}
+    - 선호 학습 방식: ${userContext.learningStyle}
+
+    이 사용자에게 적합한 일일 퀘스트를 생성하세요.
+    (제목, 설명, 완료 조건, 보상)
+  `;
+
+  const generatedQuest = await callGeminiAPI(prompt);
+  return generatedQuest;
+}
+```
+
+**2. 난이도 자동 조절**
+```javascript
+// 최근 7일 퀘스트 완료율 기반 난이도 조정
+async function adjustDifficulty(userId) {
+  const recentQuests = await getRecentQuests(userId, 7);
+  const completionRate = calculateCompletionRate(recentQuests);
+
+  if (completionRate >= 0.8) {
+    // 완료율 80% 이상 → 난이도 상승
+    return {
+      messageCount: currentDifficulty.messageCount + 2,
+      minScore: currentDifficulty.minScore + 5,
+      rewards: { xp: currentRewards.xp + 20 }
+    };
+  } else if (completionRate <= 0.3) {
+    // 완료율 30% 이하 → 난이도 하락
+    return {
+      messageCount: Math.max(3, currentDifficulty.messageCount - 2),
+      minScore: Math.max(60, currentDifficulty.minScore - 5),
+      rewards: { xp: Math.max(30, currentRewards.xp - 20) }
+    };
+  }
+
+  return currentDifficulty; // 유지
+}
+```
+
+**3. 퀘스트 다양성 보장**
+```javascript
+// 최근 7일 퀘스트와 중복 방지
+async function ensureQuestDiversity(userId, newQuests) {
+  const recentQuests = await getRecentQuests(userId, 7);
+  const recentTitles = recentQuests.map(q => q.title);
+
+  // 같은 제목의 퀘스트가 있으면 재생성
+  for (const quest of newQuests) {
+    if (recentTitles.includes(quest.title)) {
+      // AI로 새로운 퀘스트 생성 또는 템플릿 풀에서 다른 것 선택
+      quest = await generateAlternativeQuest(userId, quest.targetCompetency);
+    }
+  }
+
+  return newQuests;
+}
+
+// 템플릿 풀 확장 (8개 → 20개 이상)
+const EXTENDED_QUEST_TEMPLATES = {
+  conversation: [/* 기존 3개 + 신규 5개 */],
+  challenge: [/* 기존 2개 + 신규 3개 */],
+  reflection: [/* 기존 2개 + 신규 2개 */],
+  collaboration: [/* 신규 3개 */],
+  problem_solving: [/* 신규 4개 */]
+};
+```
+
+**DynamoDB 스키마 확장:**
+```javascript
+// ai-co-learner-daily-quests 테이블에 필드 추가
+{
+  userId: 'user-123',
+  questDate: '2025-01-02',
+  quests: [...],
+  targetCompetency: 'thinkingDepth',
+
+  // 신규 필드
+  userContext: {
+    recentTopics: ['React', 'TypeScript', 'AWS'],
+    preferredBots: ['bot-1', 'bot-3'],
+    completionRate7d: 0.65,
+    currentDifficulty: 'medium'
+  },
+  generatedBy: 'ai' | 'template', // 생성 방식 추적
+  createdAt: '2025-01-02T09:00:00Z',
+  expiresAt: 1735891200 // 7일 TTL
+}
+```
+
+**Lambda 환경 변수 추가:**
+- `QUEST_DIVERSITY_DAYS=7` - 중복 확인 기간
+- `MIN_COMPLETION_RATE=0.3` - 난이도 하향 임계값
+- `MAX_COMPLETION_RATE=0.8` - 난이도 상향 임계값
+
+**테스트 시나리오:**
+1. 신규 사용자: 기본 난이도 템플릿 퀘스트
+2. 완료율 높은 사용자: 난이도 자동 증가 확인
+3. 완료율 낮은 사용자: 난이도 자동 감소 확인
+4. 최근 7일 중복 퀘스트: 다른 퀘스트로 대체 확인
+5. AI 생성 퀘스트: Gemini API 호출 및 파싱 성공 확인
+
+**예상 효과:**
+- 사용자 참여도 30% 향상 (개인화된 퀘스트)
+- 퀘스트 완료율 50% → 70% 향상 (적절한 난이도)
+- 학습 지속성 증가 (다양한 퀘스트 경험)
+
+**예상 소요 시간**: 3-5일
+- AI 생성 로직 구현: 1-2일
+- 난이도 조절 알고리즘: 1일
+- 다양성 보장 로직: 1일
+- 테스트 및 검증: 1일
+
+---
+
 ## 📊 전체 작업 타임라인
 
 ### Sprint 1 (이번 주) - 5일

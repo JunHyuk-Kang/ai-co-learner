@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { UserBotWithDetails } from '../types';
 import { BotService } from '../services/awsBackend';
 import { useAuth } from './AuthContext';
+import { logger } from '../utils/logger';
 
 interface BotContextType {
   bots: UserBotWithDetails[];
@@ -27,7 +28,7 @@ export const BotProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const userBots = await BotService.getUserBots(user.id);
       setBots(userBots);
     } catch (error) {
-      console.error('Failed to load bots:', error);
+      logger.error('Failed to load bots:', error);
     } finally {
       setIsLoading(false);
     }
@@ -38,9 +39,7 @@ export const BotProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [user]);
 
   return (
-    <BotContext.Provider value={{ bots, loadBots, isLoading }}>
-      {children}
-    </BotContext.Provider>
+    <BotContext.Provider value={{ bots, loadBots, isLoading }}>{children}</BotContext.Provider>
   );
 };
 

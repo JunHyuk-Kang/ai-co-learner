@@ -34,13 +34,35 @@ const COGNITO_USER_POOL_ID = process.env.COGNITO_USER_POOL_ID || "ap-northeast-2
 // Google Gemini 2.5 Flash
 const MODEL_ID = "gemini-2.5-flash";
 
-// 비용 계산 상수 (USD per 1M tokens)
+// 비용 계산 상수 (USD per 1M tokens) - 2025년 1월 기준
 const PRICING = {
   "gemini-2.5-flash": {
-    input: 0.075,   // Gemini 2.5 Flash 입력 토큰 가격
-    output: 0.30    // Gemini 2.5 Flash 출력 토큰 가격
+    input: 0.30,    // Gemini 2.5 Flash 입력 토큰 가격 (2025년)
+    output: 2.50    // Gemini 2.5 Flash 출력 토큰 가격 (2025년)
   }
 };
+
+// Gemini Safety Settings - 응답 중단 방지를 위해 완화
+import { HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+
+const SAFETY_SETTINGS = [
+  {
+    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+];
 
 // CORS headers defined at top level
 const CORS_HEADERS = {
@@ -374,13 +396,14 @@ async function sendChatMessage(event, headers) {
   // 6. Gemini 호출 (시스템 프롬프트 적용)
   const model = genAI.getGenerativeModel({
     model: MODEL_ID,
-    systemInstruction: systemPrompt  // 봇 템플릿의 시스템 프롬프트 사용
+    systemInstruction: systemPrompt,  // 봇 템플릿의 시스템 프롬프트 사용
+    safetySettings: SAFETY_SETTINGS,  // Safety filter 완화
   });
 
   const chat = model.startChat({
     history: geminiHistory,
     generationConfig: {
-      maxOutputTokens: 500,
+      maxOutputTokens: 2000,  // 500 → 2000으로 증가 (한글 기준 약 1,500자)
       temperature: 0.7,
     },
   });
@@ -554,13 +577,14 @@ async function sendChatMessageStream(event, headers) {
     // 4. Gemini 스트리밍 호출 (재시도 로직 적용)
     const model = genAI.getGenerativeModel({
       model: MODEL_ID,
-      systemInstruction: systemPrompt  // 봇 템플릿의 시스템 프롬프트 사용
+      systemInstruction: systemPrompt,  // 봇 템플릿의 시스템 프롬프트 사용
+      safetySettings: SAFETY_SETTINGS,  // Safety filter 완화
     });
 
     const chat = model.startChat({
       history: geminiHistory,
       generationConfig: {
-        maxOutputTokens: 500,
+        maxOutputTokens: 2000,  // 500 → 2000으로 증가 (한글 기준 약 1,500자)
         temperature: 0.7,
       },
     });
@@ -574,21 +598,38 @@ async function sendChatMessageStream(event, headers) {
       let inTokens = 0;
       let outTokens = 0;
       const chunkList = [];
+      let chunkCount = 0;
 
+      console.log("📡 Starting to receive chunks...");
       for await (const chunk of result.stream) {
         const chunkText = chunk.text();
         fullMsg += chunkText;
+        chunkCount++;
         chunkList.push({
           type: 'chunk',
           text: chunkText
         });
+
+        // 청크별 로깅 (처음 3개와 마지막만)
+        if (chunkCount <= 3 || chunkCount % 10 === 0) {
+          console.log(`📦 Chunk #${chunkCount}: ${chunkText.substring(0, 50)}...`);
+        }
       }
+      console.log(`✅ Stream finished. Total chunks: ${chunkCount}, Total length: ${fullMsg.length} chars`);
 
       // 토큰 사용량 수집 (Gemini API에서 제공)
       const response = await result.response;
       if (response.usageMetadata) {
         inTokens = response.usageMetadata.promptTokenCount || 0;
         outTokens = response.usageMetadata.candidatesTokenCount || 0;
+      }
+
+      // Safety 차단 확인
+      if (response.promptFeedback?.blockReason) {
+        console.warn("⚠️ Response blocked by safety filter:", response.promptFeedback.blockReason);
+      }
+      if (response.candidates?.[0]?.finishReason && response.candidates[0].finishReason !== 'STOP') {
+        console.warn("⚠️ Unexpected finish reason:", response.candidates[0].finishReason);
       }
 
       return {
@@ -599,7 +640,7 @@ async function sendChatMessageStream(event, headers) {
       };
     });
 
-    console.log("Streaming completed. Full message:", fullAiMessage);
+    console.log("Streaming completed. Full message length:", fullAiMessage.length, "chars");
 
     // 6. DynamoDB에 메시지 저장 (스트림 완료 후)
     const timestamp = Date.now();
@@ -2722,8 +2763,9 @@ async function getCompetencyHistory(event, headers) {
     const startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - days);
 
-    const startTimestamp = Math.floor(startDate.getTime() / 1000);
-    const endTimestamp = Math.floor(endDate.getTime() / 1000);
+    // learning-analytics 테이블의 timestamp는 밀리초 단위
+    const startTimestamp = startDate.getTime();
+    const endTimestamp = endDate.getTime();
 
     // learning-analytics 테이블에서 분석 데이터 조회
     const response = await dynamoClient.send(new QueryCommand({
@@ -2755,8 +2797,10 @@ async function getCompetencyHistory(event, headers) {
     const dailyAverages = {};
 
     response.Items.forEach(item => {
-      const date = new Date(item.timestamp * 1000).toISOString().split('T')[0]; // YYYY-MM-DD
-      const scores = item.competencyScores || {};
+      // timestamp는 이미 밀리초 단위이므로 변환 불필요
+      const date = new Date(item.timestamp).toISOString().split('T')[0]; // YYYY-MM-DD
+      // 하위 호환성: competencyScores(신규) 또는 analysisResult(기존) 사용
+      const scores = item.competencyScores || item.analysisResult || {};
 
       if (!dailyAverages[date]) {
         dailyAverages[date] = {
@@ -3027,10 +3071,11 @@ async function getLearningAnalysis(event, headers) {
       };
     }
 
+    // responsePayload.body는 이미 JSON 문자열이므로 그대로 반환
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify(responsePayload),
+      body: responsePayload.body,
     };
   } catch (error) {
     console.error("Get learning analysis error:", error);

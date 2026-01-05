@@ -1,12 +1,26 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { signUp, signIn, signOut, getCurrentUser, confirmSignUp, fetchUserAttributes, fetchAuthSession } from 'aws-amplify/auth';
+import {
+  signUp,
+  signIn,
+  signOut,
+  getCurrentUser,
+  confirmSignUp,
+  fetchUserAttributes,
+  fetchAuthSession,
+} from 'aws-amplify/auth';
 import { User } from '../types';
 import { UserService } from '../services/awsBackend';
+import { logger } from '../utils/logger';
 
 interface AuthContextType {
   user: User | null;
   login: (username: string, password: string) => Promise<void>;
-  signup: (username: string, password: string, name: string, organization?: string) => Promise<{ needsConfirmation: boolean; username?: string }>;
+  signup: (
+    username: string,
+    password: string,
+    name: string,
+    organization?: string
+  ) => Promise<{ needsConfirmation: boolean; username?: string }>;
   confirmSignup: (username: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   isLoading: boolean;
@@ -31,7 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const tokens = session.tokens;
 
       if (!tokens || !tokens.accessToken) {
-        console.log('No tokens found');
+        logger.debug('No tokens found');
         return false;
       }
 
@@ -40,20 +54,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const expirationTime = payload?.exp as number | undefined;
 
       if (!expirationTime) {
-        console.log('No expiration time in token');
+        logger.debug('No expiration time in token');
         return false;
       }
 
       const currentTime = Math.floor(Date.now() / 1000);
 
       if (expirationTime <= currentTime) {
-        console.log('Token expired');
+        logger.debug('Token expired');
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('Token check error:', error);
+      logger.error('Token check error:', error);
       return false;
     }
   };
@@ -62,7 +76,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkSession = async () => {
     const isValid = await checkTokenValidity();
     if (!isValid && user) {
-      console.log('Session expired, logging out');
+      logger.info('Session expired, logging out');
       await logout();
       alert('세션이 만료되었습니다. 다시 로그인해주세요.');
     }
@@ -111,7 +125,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // name이 UUID 형태(userId)이고 Cognito에 실제 이름이 있으면 업데이트
         if (userProfile.name === currentUser.userId && cognitoName !== currentUser.userId) {
-          const updatedProfile = await UserService.updateUserProfile(currentUser.userId, cognitoName);
+          const updatedProfile = await UserService.updateUserProfile(
+            currentUser.userId,
+            cognitoName
+          );
           setUser(updatedProfile);
         } else {
           setUser(userProfile);
@@ -133,7 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // 세션 체크 시작
       startSessionCheck();
     } catch (error) {
-      console.error('Error fetching user:', error);
+      logger.error('Error fetching user:', error);
       setUser(null);
       stopSessionCheck();
     }
@@ -157,14 +174,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       await fetchCurrentUser();
     } catch (error: any) {
-      console.error('Login error:', error);
+      logger.error('Login error:', error);
       throw new Error(error.message || '로그인 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const signup = async (username: string, password: string, name: string, organization?: string) => {
+  const signup = async (
+    username: string,
+    password: string,
+    name: string,
+    organization?: string
+  ) => {
     setIsLoading(true);
     try {
       // Cognito에 회원가입
@@ -204,9 +226,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(userProfile);
       return { needsConfirmation: false };
-
     } catch (error: any) {
-      console.error('Signup error:', error);
+      logger.error('Signup error:', error);
       throw new Error(error.message || '회원가입 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
@@ -218,9 +239,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // 인증 코드 확인
       await confirmSignUp({ username, confirmationCode: code });
-
     } catch (error: any) {
-      console.error('Confirmation error:', error);
+      logger.error('Confirmation error:', error);
       throw new Error(error.message || '인증 코드 확인 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
@@ -233,7 +253,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       stopSessionCheck();
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('Logout error:', error);
     }
   };
 

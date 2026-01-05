@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { QuestService, Quest, UserQuests } from '../services/awsBackend';
 import { PageTransition } from '../components/layout/PageTransition';
+import { logger } from '../utils/logger';
 
 const DailyQuests: React.FC = () => {
   const { user } = useAuth();
@@ -22,7 +23,7 @@ const DailyQuests: React.FC = () => {
       const data = await QuestService.getUserQuests(user.id);
       setQuestsData(data);
     } catch (err) {
-      console.error('Failed to load quests:', err);
+      logger.error('Failed to load quests:', err);
       setError('퀘스트를 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
@@ -68,7 +69,8 @@ const DailyQuests: React.FC = () => {
   };
 
   const calculateProgress = (quest: Quest) => {
-    const messageProgress = (quest.progress.currentMessages / quest.completionCriteria.messageCount) * 100;
+    const messageProgress =
+      (quest.progress.currentMessages / quest.completionCriteria.messageCount) * 100;
     const scoreProgress = (quest.progress.currentScore / quest.completionCriteria.minScore) * 100;
     return Math.min(Math.max(messageProgress, scoreProgress), 100);
   };
@@ -127,7 +129,11 @@ const DailyQuests: React.FC = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">오늘의 퀘스트</h1>
           <p className="text-gray-600">
-            {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString('ko-KR', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+            })}
           </p>
         </div>
 
@@ -157,7 +163,7 @@ const DailyQuests: React.FC = () => {
 
         {/* 퀘스트 카드 목록 */}
         <div className="space-y-4">
-          {questsData.quests.map((quest) => {
+          {questsData.quests.map(quest => {
             const progress = calculateProgress(quest);
             const isCompleted = quest.status === 'completed';
 
@@ -174,7 +180,9 @@ const DailyQuests: React.FC = () => {
                       <span className="px-2 py-1 text-xs font-semibold rounded bg-indigo-100 text-indigo-700">
                         {getQuestTypeLabel(quest.questType)}
                       </span>
-                      <span className={`px-2 py-1 text-xs font-semibold rounded ${getDifficultyColor(quest.difficulty)}`}>
+                      <span
+                        className={`px-2 py-1 text-xs font-semibold rounded ${getDifficultyColor(quest.difficulty)}`}
+                      >
                         {quest.difficulty.toUpperCase()}
                       </span>
                       <span className="px-2 py-1 text-xs font-semibold rounded bg-purple-100 text-purple-700">
@@ -187,8 +195,18 @@ const DailyQuests: React.FC = () => {
                   {isCompleted && (
                     <div className="flex-shrink-0 ml-4">
                       <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        <svg
+                          className="w-6 h-6 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
                         </svg>
                       </div>
                     </div>
@@ -235,7 +253,10 @@ const DailyQuests: React.FC = () => {
                       ⭐ {quest.rewards.xp} XP
                     </span>
                     {Object.entries(quest.rewards.competencyBoost).map(([competency, boost]) => (
-                      <span key={competency} className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded">
+                      <span
+                        key={competency}
+                        className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded"
+                      >
                         📈 {getCompetencyLabel(competency)} +{boost}
                       </span>
                     ))}
@@ -255,8 +276,8 @@ const DailyQuests: React.FC = () => {
         {/* 하단 안내 */}
         <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-blue-800 text-sm">
-            💡 <strong>팁:</strong> AI 봇과 대화하면서 퀘스트가 자동으로 진행됩니다.
-            5분마다 진행도가 업데이트되니 조금만 기다려주세요!
+            💡 <strong>팁:</strong> AI 봇과 대화하면서 퀘스트가 자동으로 진행됩니다. 5분마다
+            진행도가 업데이트되니 조금만 기다려주세요!
           </p>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AssessmentService, AssessmentQuestion, AssessmentResult } from '../services/awsBackend';
 import { Button } from '../components/ui/Button';
 import { Brain, Sparkles, CheckCircle, ArrowRight, ArrowLeft } from 'lucide-react';
+import { logger } from '../utils/logger';
 
 export const InitialAssessment: React.FC = () => {
   const { user } = useAuth();
@@ -32,7 +33,7 @@ export const InitialAssessment: React.FC = () => {
       setAnswerHistory([]);
       setHasStarted(true);
     } catch (error) {
-      console.error('Failed to start assessment:', error);
+      logger.error('Failed to start assessment:', error);
       alert('진단을 시작하는데 실패했습니다.');
     }
   };
@@ -67,7 +68,7 @@ export const InitialAssessment: React.FC = () => {
       }
       setIsSubmitting(false);
     } catch (error) {
-      console.error('Failed to submit answer:', error);
+      logger.error('Failed to submit answer:', error);
       alert('답변 제출에 실패했습니다.');
       setIsSubmitting(false);
     }
@@ -121,7 +122,7 @@ export const InitialAssessment: React.FC = () => {
                   creativity: '창의성',
                   communicationClarity: '소통 명확성',
                   executionOriented: '실행 지향성',
-                  collaborationSignal: '협업 능력'
+                  collaborationSignal: '협업 능력',
                 };
 
                 const percentage = (value / 10) * 100;
@@ -190,7 +191,7 @@ export const InitialAssessment: React.FC = () => {
                 { name: '소통 명확성', icon: '💬' },
                 { name: '실행 지향성', icon: '🚀' },
                 { name: '협업 능력', icon: '🤝' },
-              ].map((item) => (
+              ].map(item => (
                 <div
                   key={item.name}
                   className="flex items-center gap-3 bg-[#252525] rounded-lg p-3"
@@ -253,9 +254,11 @@ export const InitialAssessment: React.FC = () => {
                 } ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    selectedOption === index ? 'border-primary' : 'border-gray-500'
-                  }`}>
+                  <div
+                    className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                      selectedOption === index ? 'border-primary' : 'border-gray-500'
+                    }`}
+                  >
                     {selectedOption === index && (
                       <div className="w-3 h-3 rounded-full bg-primary" />
                     )}

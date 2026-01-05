@@ -1,6 +1,7 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
 import { User, ChatSession, Message } from '../types';
 import { apiGet, apiPost } from './apiUtils';
+import { logger } from '../utils/logger';
 
 export interface Competency {
   name: string;
@@ -31,12 +32,17 @@ export const UserService = {
 
       return data as User;
     } catch (error) {
-      console.error('Failed to get user profile:', error);
+      logger.error('Failed to get user profile:', error);
       return null;
     }
   },
 
-  createUserProfile: async (userId: string, username: string, name: string, organization?: string): Promise<User> => {
+  createUserProfile: async (
+    userId: string,
+    username: string,
+    name: string,
+    organization?: string
+  ): Promise<User> => {
     try {
       const data: any = await apiPost('/users', {
         userId,
@@ -58,7 +64,7 @@ export const UserService = {
 
       return data as User;
     } catch (error) {
-      console.error('Failed to create user profile:', error);
+      logger.error('Failed to create user profile:', error);
       throw error;
     }
   },
@@ -81,7 +87,7 @@ export const UserService = {
 
       return data as User;
     } catch (error) {
-      console.error('Failed to update user profile:', error);
+      logger.error('Failed to update user profile:', error);
       throw error;
     }
   },
@@ -91,7 +97,7 @@ export const UserService = {
       const data = await apiGet<UserCompetencies>(`/users/${userId}/competencies`);
       return data;
     } catch (error) {
-      console.error('Failed to get competencies:', error);
+      logger.error('Failed to get competencies:', error);
       return null;
     }
   },
@@ -103,7 +109,7 @@ export const ChatService = {
       const data = await apiGet<ChatSession>(`/chat/session/${botId}`);
       return data;
     } catch (error) {
-      console.error('Failed to get session:', error);
+      logger.error('Failed to get session:', error);
       return null;
     }
   },
@@ -121,7 +127,7 @@ export const ChatService = {
 
       return data.aiMessage as Message;
     } catch (error) {
-      console.error('Failed to send message:', error);
+      logger.error('Failed to send message:', error);
       throw error;
     }
   },
@@ -147,13 +153,14 @@ export const ChatService = {
       }
 
       const API_URL = import.meta.env.VITE_API_GATEWAY_URL;
-      console.log('Streaming to:', `${API_URL}/chat/stream`, { userId, botId });
+      logger.debug('Streaming to:', `${API_URL}/chat/stream`);
+      logger.debug('Stream parameters:', { userId, botId });
 
       const response = await fetch(`${API_URL}/chat/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           userId,
@@ -168,7 +175,10 @@ export const ChatService = {
         if (response.status === 429) {
           try {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'AI 서비스 일일 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.');
+            throw new Error(
+              errorData.error ||
+                'AI 서비스 일일 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.'
+            );
           } catch (e) {
             throw new Error('AI 서비스 일일 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.');
           }
@@ -204,20 +214,21 @@ export const ChatService = {
               if (chunk.type === 'chunk' && chunk.text) {
                 onChunk(chunk.text);
               } else if (chunk.type === 'done') {
-                console.log('Stream completed:', chunk.messageId);
+                logger.debug('Stream completed:', chunk.messageId);
               }
             } catch (parseError) {
-              console.error('Failed to parse chunk:', line, parseError);
+              logger.error('Failed to parse chunk:', parseError);
+              logger.debug('Problematic line:', line);
             }
           }
         }
       }
     } catch (error: any) {
       if (error.name === 'AbortError') {
-        console.log('Stream aborted by user');
+        logger.info('Stream aborted by user');
         return;
       }
-      console.error('Failed to stream message:', error);
+      logger.error('Failed to stream message:', error);
       throw error;
     }
   },
@@ -229,7 +240,7 @@ export const BotService = {
       const data = await apiGet<any>('/bots/templates');
       return data;
     } catch (error) {
-      console.error('Failed to get templates:', error);
+      logger.error('Failed to get templates:', error);
       return [];
     }
   },
@@ -239,7 +250,7 @@ export const BotService = {
       const data = await apiGet<any>(`/bots/user/${userId}`);
       return data;
     } catch (error) {
-      console.error('Failed to get user bots:', error);
+      logger.error('Failed to get user bots:', error);
       return [];
     }
   },
@@ -253,7 +264,7 @@ export const BotService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to create user bot:', error);
+      logger.error('Failed to create user bot:', error);
       throw error;
     }
   },
@@ -266,7 +277,7 @@ export const BotService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to create template:', error);
+      logger.error('Failed to create template:', error);
       throw error;
     }
   },
@@ -280,7 +291,7 @@ export const BotService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to update template:', error);
+      logger.error('Failed to update template:', error);
       throw error;
     }
   },
@@ -293,7 +304,7 @@ export const BotService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to delete template:', error);
+      logger.error('Failed to delete template:', error);
       throw error;
     }
   },
@@ -306,7 +317,7 @@ export const BotService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to delete user bot:', error);
+      logger.error('Failed to delete user bot:', error);
       throw error;
     }
   },
@@ -316,7 +327,7 @@ export const BotService = {
       const data = await apiGet<any>(`/bots/recommended/${userId}`);
       return data;
     } catch (error) {
-      console.error('Failed to get recommended templates:', error);
+      logger.error('Failed to get recommended templates:', error);
       return [];
     }
   },
@@ -368,7 +379,7 @@ export const AdminService = {
       const data = await apiGet<any>(`/admin/users?userId=${adminUserId}`);
       return data;
     } catch (error) {
-      console.error('Failed to get all users:', error);
+      logger.error('Failed to get all users:', error);
       return [];
     }
   },
@@ -382,7 +393,7 @@ export const AdminService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to update user role:', error);
+      logger.error('Failed to update user role:', error);
       throw error;
     }
   },
@@ -395,12 +406,17 @@ export const AdminService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to block/unblock user:', error);
+      logger.error('Failed to block/unblock user:', error);
       throw error;
     }
   },
 
-  updateUserInfo: async (userId: string, name: string, organization?: string, password?: string) => {
+  updateUserInfo: async (
+    userId: string,
+    name: string,
+    organization?: string,
+    password?: string
+  ) => {
     try {
       const data = await apiPost<any>('/admin/users/update-info', {
         userId,
@@ -410,17 +426,20 @@ export const AdminService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to update user info:', error);
+      logger.error('Failed to update user info:', error);
       throw error;
     }
   },
 
-  getUsageStats: async (adminUserId: string, params?: {
-    userId?: string;
-    startDate?: string;
-    endDate?: string;
-    days?: number;
-  }): Promise<UsageStatsResponse> => {
+  getUsageStats: async (
+    adminUserId: string,
+    params?: {
+      userId?: string;
+      startDate?: string;
+      endDate?: string;
+      days?: number;
+    }
+  ): Promise<UsageStatsResponse> => {
     try {
       const queryParams = new URLSearchParams();
       queryParams.append('adminUserId', adminUserId);
@@ -433,7 +452,7 @@ export const AdminService = {
       const data = await apiGet<UsageStatsResponse>(url);
       return data;
     } catch (error) {
-      console.error('Failed to get usage stats:', error);
+      logger.error('Failed to get usage stats:', error);
       throw error;
     }
   },
@@ -466,17 +485,32 @@ export interface AssessmentProgress {
 }
 
 export const AssessmentService = {
-  startAssessment: async (userId: string): Promise<{ assessmentId: string; firstQuestion: AssessmentQuestion; totalQuestions: number }> => {
+  startAssessment: async (
+    userId: string
+  ): Promise<{
+    assessmentId: string;
+    firstQuestion: AssessmentQuestion;
+    totalQuestions: number;
+  }> => {
     try {
-      const data = await apiPost<{ assessmentId: string; firstQuestion: AssessmentQuestion; totalQuestions: number }>('/assessment/start', { userId });
+      const data = await apiPost<{
+        assessmentId: string;
+        firstQuestion: AssessmentQuestion;
+        totalQuestions: number;
+      }>('/assessment/start', { userId });
       return data;
     } catch (error) {
-      console.error('Failed to start assessment:', error);
+      logger.error('Failed to start assessment:', error);
       throw error;
     }
   },
 
-  submitAnswer: async (userId: string, assessmentId: string, questionId: string, selectedOptionIndex: number): Promise<{
+  submitAnswer: async (
+    userId: string,
+    assessmentId: string,
+    questionId: string,
+    selectedOptionIndex: number
+  ): Promise<{
     isCompleted: boolean;
     nextQuestion: AssessmentQuestion | null;
     progress: AssessmentProgress;
@@ -496,12 +530,14 @@ export const AssessmentService = {
       });
       return data;
     } catch (error) {
-      console.error('Failed to submit answer:', error);
+      logger.error('Failed to submit answer:', error);
       throw error;
     }
   },
 
-  getResults: async (userId: string): Promise<{
+  getResults: async (
+    userId: string
+  ): Promise<{
     assessmentId: string;
     status: string;
     results: AssessmentResult;
@@ -518,7 +554,7 @@ export const AssessmentService = {
       } | null>(`/assessment/results/${userId}`);
       return data;
     } catch (error) {
-      console.error('Failed to get assessment results:', error);
+      logger.error('Failed to get assessment results:', error);
       return null;
     }
   },
@@ -565,7 +601,7 @@ export const QuestService = {
       const data = await apiGet<UserQuests>(`/quests/${userId}`);
       return data;
     } catch (error) {
-      console.error('Failed to get user quests:', error);
+      logger.error('Failed to get user quests:', error);
       return null;
     }
   },
@@ -589,10 +625,12 @@ export interface CompetencyHistory {
 export const CompetencyHistoryService = {
   getHistory: async (userId: string, days: number = 30): Promise<CompetencyHistory | null> => {
     try {
-      const data = await apiGet<CompetencyHistory>(`/users/${userId}/competencies/history?days=${days}`);
+      const data = await apiGet<CompetencyHistory>(
+        `/users/${userId}/competencies/history?days=${days}`
+      );
       return data;
     } catch (error) {
-      console.error('Failed to get competency history:', error);
+      logger.error('Failed to get competency history:', error);
       return null;
     }
   },
@@ -632,7 +670,7 @@ export const AchievementService = {
       const data = await apiGet<UserAchievements>(`/achievements/${userId}`);
       return data;
     } catch (error) {
-      console.error('Failed to get user achievements:', error);
+      logger.error('Failed to get user achievements:', error);
       return null;
     }
   },
@@ -713,7 +751,7 @@ export const LearningAnalysisService = {
       const data = await apiGet<LearningAnalysis>(`/analysis/${userId}`);
       return data;
     } catch (error) {
-      console.error('Failed to get learning analysis:', error);
+      logger.error('Failed to get learning analysis:', error);
       return null;
     }
   },

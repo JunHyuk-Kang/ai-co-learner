@@ -30,6 +30,10 @@ test-*.html
 cors-*.json
 request-templates.json
 nul
+check-*.mjs
+check-*.py
+create-zip.mjs
+lambdachat-apiscripts/
 
 # AWS and sensitive files
 lambda-permissions-policy.json

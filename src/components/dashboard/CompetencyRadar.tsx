@@ -1,13 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Radar,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  ResponsiveContainer,
-} from 'recharts';
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import { CompetencyData } from '../../types';
 import { UserService } from '../../services/awsBackend';
+import { logger } from '../../utils/logger';
 
 interface CompetencyRadarProps {
   userId: string;
@@ -38,7 +33,7 @@ export const CompetencyRadar: React.FC<CompetencyRadarProps> = ({ userId }) => {
         const chartData = result.competencies.map(c => ({
           subject: COMPETENCY_MAP[c.name] || c.name,
           A: c.score,
-          fullMark: 100
+          fullMark: 100,
         }));
         setData(chartData);
       } else {
@@ -53,7 +48,7 @@ export const CompetencyRadar: React.FC<CompetencyRadarProps> = ({ userId }) => {
         ]);
       }
     } catch (error) {
-      console.error('Failed to load competencies:', error);
+      logger.error('Failed to load competencies:', error);
       // 에러 시 기본값
       setData([
         { subject: '질문력', A: 0, fullMark: 100 },
@@ -70,7 +65,10 @@ export const CompetencyRadar: React.FC<CompetencyRadarProps> = ({ userId }) => {
 
   if (loading) {
     return (
-      <div className="h-[250px] w-full flex items-center justify-center" style={{ minHeight: '250px' }}>
+      <div
+        className="h-[250px] w-full flex items-center justify-center"
+        style={{ minHeight: '250px' }}
+      >
         <div className="text-gray-400">역량 데이터를 불러오는 중...</div>
       </div>
     );
@@ -81,10 +79,7 @@ export const CompetencyRadar: React.FC<CompetencyRadarProps> = ({ userId }) => {
       <ResponsiveContainer width="100%" height="100%" minHeight={250}>
         <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
           <PolarGrid stroke="#333" />
-          <PolarAngleAxis
-            dataKey="subject"
-            tick={{ fill: '#9CA3AF', fontSize: 11 }}
-          />
+          <PolarAngleAxis dataKey="subject" tick={{ fill: '#9CA3AF', fontSize: 11 }} />
           <Radar
             name="역량"
             dataKey="A"

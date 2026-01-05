@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { LearningAnalysisService, LearningAnalysis, Insight } from '../../services/awsBackend';
 import { TrendingUp, TrendingDown, AlertCircle, Award, Zap, Lightbulb } from 'lucide-react';
+import { logger } from '../../utils/logger';
 
 interface LearningInsightsProps {
   userId: string;
@@ -73,7 +74,7 @@ export const LearningInsights: React.FC<LearningInsightsProps> = ({ userId }) =>
       const data = await LearningAnalysisService.getAnalysis(userId);
       setAnalysis(data);
     } catch (err) {
-      console.error('Failed to load learning analysis:', err);
+      logger.error('Failed to load learning analysis:', err);
       setError('학습 분석 데이터를 불러오는데 실패했습니다.');
     } finally {
       setLoading(false);
@@ -89,9 +90,7 @@ export const LearningInsights: React.FC<LearningInsightsProps> = ({ userId }) =>
   }
 
   if (error) {
-    return (
-      <div className="text-center text-red-400 py-8">{error}</div>
-    );
+    return <div className="text-center text-red-400 py-8">{error}</div>;
   }
 
   if (!analysis || !analysis.dataAvailable) {
@@ -132,7 +131,9 @@ export const LearningInsights: React.FC<LearningInsightsProps> = ({ userId }) =>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <h3 className="font-bold text-gray-200">{insight.title}</h3>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border ${priorityBadge} font-semibold uppercase`}>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full border ${priorityBadge} font-semibold uppercase`}
+                      >
                         {insight.priority}
                       </span>
                     </div>
@@ -157,7 +158,9 @@ export const LearningInsights: React.FC<LearningInsightsProps> = ({ userId }) =>
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-400">평균 점수</span>
-                <span className="text-sm font-bold text-gray-200">{competencyAnalysis.avgScore}점</span>
+                <span className="text-sm font-bold text-gray-200">
+                  {competencyAnalysis.avgScore}점
+                </span>
               </div>
               {competencyAnalysis.strengths.length > 0 && (
                 <div className="flex justify-between items-center">
@@ -189,7 +192,9 @@ export const LearningInsights: React.FC<LearningInsightsProps> = ({ userId }) =>
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-400">총 메시지</span>
-                <span className="text-sm font-bold text-gray-200">{activityAnalysis.totalMessages}개</span>
+                <span className="text-sm font-bold text-gray-200">
+                  {activityAnalysis.totalMessages}개
+                </span>
               </div>
               {activityAnalysis.peakHours.length > 0 && (
                 <div className="flex justify-between items-center">
@@ -225,8 +230,11 @@ export const LearningInsights: React.FC<LearningInsightsProps> = ({ userId }) =>
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs text-gray-400">전체 성장률</span>
-                <span className={`text-sm font-bold ${growthAnalysis.growthRate >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {growthAnalysis.growthRate >= 0 ? '+' : ''}{growthAnalysis.growthRate}%
+                <span
+                  className={`text-sm font-bold ${growthAnalysis.growthRate >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                >
+                  {growthAnalysis.growthRate >= 0 ? '+' : ''}
+                  {growthAnalysis.growthRate}%
                 </span>
               </div>
               <div className="flex justify-between items-center">

@@ -245,7 +245,7 @@ async function saveAnalysisResults(results) {
           messageType: result.analysis.messageType || "question",
           userMessage: result.userMessage,
           aiMessage: result.aiMessage,
-          analysisResult: {
+          competencyScores: {
             questionQuality: result.analysis.questionQuality,
             thinkingDepth: result.analysis.thinkingDepth,
             creativity: result.analysis.creativity,

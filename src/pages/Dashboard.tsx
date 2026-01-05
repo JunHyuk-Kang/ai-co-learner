@@ -9,7 +9,21 @@ import { Input } from '../components/ui/Input';
 import { BotService, UserService, AchievementService, Achievement } from '../services/awsBackend';
 import { BotTemplate } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
-import { MessageSquare, Plus, X, Rocket, Brain, Crown, Users, Trash2, ClipboardList, Target, Sparkles, Flame } from 'lucide-react';
+import {
+  MessageSquare,
+  Plus,
+  X,
+  Rocket,
+  Brain,
+  Crown,
+  Users,
+  Trash2,
+  ClipboardList,
+  Target,
+  Sparkles,
+  Flame,
+} from 'lucide-react';
+import { logger } from '../utils/logger';
 
 // Mapping theme colors to Tailwind classes
 const colorMap: Record<string, string> = {
@@ -37,7 +51,7 @@ const competencyNames: Record<string, string> = {
   creativity: '창의성',
   communicationClarity: '소통력',
   executionOriented: '실행력',
-  collaborationSignal: '협업력'
+  collaborationSignal: '협업력',
 };
 
 // 배지 아이콘 매핑
@@ -51,7 +65,7 @@ const getAchievementIcon = (iconName: string) => {
     MessageCircle: MessageSquare,
     Rocket,
     Users,
-    Flame
+    Flame,
   };
   return icons[iconName] || Crown;
 };
@@ -92,7 +106,7 @@ export const Dashboard: React.FC = () => {
 
     // 역량 데이터가 있는지 확인
     if (user) {
-      UserService.getCompetencies(user.id).then((data) => {
+      UserService.getCompetencies(user.id).then(data => {
         setHasCompetencies(data !== null && data.competencies.length > 0);
       });
 
@@ -100,7 +114,7 @@ export const Dashboard: React.FC = () => {
       BotService.getRecommendedTemplates(user.id).then(setRecommendedTemplates);
 
       // 배지 조회
-      AchievementService.getUserAchievements(user.id).then((data) => {
+      AchievementService.getUserAchievements(user.id).then(data => {
         if (data) {
           setAchievements(data.allAchievements);
           setTotalAchievements(data.totalAchievements);
@@ -132,12 +146,21 @@ export const Dashboard: React.FC = () => {
 
   const handleQuickCreate = async () => {
     if (!user || !selectedTemplateId || !newBotName || !selectedTemplate) {
-      console.error('Missing required data:', { user: !!user, selectedTemplateId, newBotName, selectedTemplate: !!selectedTemplate });
+      logger.error('Missing required data for bot creation', {
+        user: !!user,
+        selectedTemplateId,
+        newBotName,
+        selectedTemplate: !!selectedTemplate,
+      });
       return;
     }
     setIsCreating(true);
     try {
-      console.log('Creating bot:', { userId: user.id, templateId: selectedTemplateId, name: newBotName });
+      logger.debug('Creating bot:', {
+        userId: user.id,
+        templateId: selectedTemplateId,
+        name: newBotName,
+      });
       await BotService.createUserBot(user.id, selectedTemplateId, newBotName);
       await loadBots();
       setIsQuickCreateOpen(false);
@@ -145,8 +168,10 @@ export const Dashboard: React.FC = () => {
       setSelectedTemplateId('');
       setSelectedTemplate(null);
     } catch (error) {
-      console.error('Failed to create bot:', error);
-      alert(`봇 생성에 실패했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`);
+      logger.error('Failed to create bot:', error);
+      alert(
+        `봇 생성에 실패했습니다: ${error instanceof Error ? error.message : '알 수 없는 오류'}`
+      );
     } finally {
       setIsCreating(false);
     }
@@ -165,7 +190,7 @@ export const Dashboard: React.FC = () => {
       await BotService.deleteUserBot(user.id, botId);
       await loadBots();
     } catch (error) {
-      console.error('Failed to delete bot:', error);
+      logger.error('Failed to delete bot:', error);
       alert('봇 삭제에 실패했습니다.');
     }
   };
@@ -174,7 +199,6 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="flex-1 overflow-y-auto p-4 md:p-8 bg-[#121212] text-white relative">
-
       {/* Top Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
         <div>
@@ -191,17 +215,17 @@ export const Dashboard: React.FC = () => {
           </div>
           <div className="flex flex-col">
             <span className="text-xs font-bold text-white">{user.name}</span>
-            <span className="text-[10px] text-primary">{user.title || `Lv.${user.level} 학습자`}</span>
+            <span className="text-[10px] text-primary">
+              {user.title || `Lv.${user.level} 학습자`}
+            </span>
           </div>
         </div>
       </div>
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
         {/* LEFT COLUMN (Radar & Badges) */}
         <div className="lg:col-span-4 space-y-6">
-
           {/* Radar Chart Card */}
           <div className="bg-[#1E1E1E] rounded-xl p-6 border border-[#333]">
             <div className="flex justify-between items-center mb-4">
@@ -226,11 +250,7 @@ export const Dashboard: React.FC = () => {
                   <br />
                   진단을 통해 맞춤형 학습 경로를 받아보세요!
                 </p>
-                <Button
-                  size="sm"
-                  onClick={() => navigate('/assessment')}
-                  className="gap-2"
-                >
+                <Button size="sm" onClick={() => navigate('/assessment')} className="gap-2">
                   <ClipboardList size={16} />
                   진단 시작하기
                 </Button>
@@ -278,7 +298,7 @@ export const Dashboard: React.FC = () => {
                     }
                     return 0;
                   })
-                  .map((achievement) => {
+                  .map(achievement => {
                     const IconComponent = getAchievementIcon(achievement.icon);
                     const isUnlocked = achievement.unlocked;
                     const progress = achievement.progress || 0;
@@ -289,11 +309,15 @@ export const Dashboard: React.FC = () => {
                         key={achievement.id}
                         className={`flex items-center gap-4 ${!isUnlocked ? 'opacity-50' : ''}`}
                       >
-                        <div className={`w-10 h-10 rounded-lg bg-[#2A2A2A] flex items-center justify-center ${!isUnlocked ? 'grayscale' : ''}`}>
+                        <div
+                          className={`w-10 h-10 rounded-lg bg-[#2A2A2A] flex items-center justify-center ${!isUnlocked ? 'grayscale' : ''}`}
+                        >
                           <IconComponent className={getTierColor(achievement.tier)} size={20} />
                         </div>
                         <div className="flex-1">
-                          <div className={`text-sm font-bold ${isUnlocked ? 'text-gray-200' : 'text-gray-400'}`}>
+                          <div
+                            className={`text-sm font-bold ${isUnlocked ? 'text-gray-200' : 'text-gray-400'}`}
+                          >
                             {achievement.name}
                           </div>
                           {isUnlocked ? (
@@ -333,7 +357,6 @@ export const Dashboard: React.FC = () => {
                 {recommendedTemplates.map(template => {
                   const bgColorClass = colorMap[template.themeColor || 'blue'] || 'bg-blue-600';
 
-
                   return (
                     <div
                       key={template.id}
@@ -345,7 +368,9 @@ export const Dashboard: React.FC = () => {
                         </span>
                       </div>
 
-                      <div className={`w-10 h-10 rounded-full ${bgColorClass} flex items-center justify-center text-white font-bold mb-3 shadow-lg`}>
+                      <div
+                        className={`w-10 h-10 rounded-full ${bgColorClass} flex items-center justify-center text-white font-bold mb-3 shadow-lg`}
+                      >
                         {template.name.charAt(0)}
                       </div>
 
@@ -353,7 +378,7 @@ export const Dashboard: React.FC = () => {
 
                       {template.primaryCompetencies && template.primaryCompetencies.length > 0 && (
                         <div className="flex flex-wrap gap-1 mb-3">
-                          {template.primaryCompetencies.map((comp) => (
+                          {template.primaryCompetencies.map(comp => (
                             <span
                               key={comp}
                               className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20"
@@ -383,7 +408,9 @@ export const Dashboard: React.FC = () => {
 
           <div className="flex justify-between items-end mb-4">
             <h2 className="text-lg font-bold text-gray-100">학습 파트너 선택</h2>
-            <button className="text-xs text-primary hover:text-primary-hover transition-colors">모두 보기</button>
+            <button className="text-xs text-primary hover:text-primary-hover transition-colors">
+              모두 보기
+            </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
@@ -392,9 +419,14 @@ export const Dashboard: React.FC = () => {
               const labelClass = bgMap[bot.themeColor || 'blue'] || bgMap['blue'];
 
               return (
-                <div key={bot.id} className="bg-[#1E1E1E] border border-[#333] rounded-xl p-6 hover:border-primary/50 transition-all group relative overflow-hidden">
+                <div
+                  key={bot.id}
+                  className="bg-[#1E1E1E] border border-[#333] rounded-xl p-6 hover:border-primary/50 transition-all group relative overflow-hidden"
+                >
                   <div className="flex justify-between items-start mb-4">
-                    <div className={`w-12 h-12 rounded-full ${bgColorClass} flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
+                    <div
+                      className={`w-12 h-12 rounded-full ${bgColorClass} flex items-center justify-center text-white font-bold text-lg shadow-lg`}
+                    >
                       {bot.name.charAt(0)}
                     </div>
                     <div className="flex items-center gap-2">
@@ -402,7 +434,7 @@ export const Dashboard: React.FC = () => {
                         Lv.{bot.currentLevel}
                       </span>
                       <button
-                        onClick={(e) => {
+                        onClick={e => {
                           e.preventDefault();
                           handleDeleteBot(bot.id, bot.name);
                         }}
@@ -424,7 +456,7 @@ export const Dashboard: React.FC = () => {
 
                     {bot.primaryCompetencies && bot.primaryCompetencies.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-3">
-                        {bot.primaryCompetencies.map((comp) => (
+                        {bot.primaryCompetencies.map(comp => (
                           <span
                             key={comp}
                             className="text-[9px] px-1.5 py-0.5 rounded bg-gray-500/10 text-gray-400 border border-gray-500/20"
@@ -484,25 +516,26 @@ export const Dashboard: React.FC = () => {
             <div className="p-6">
               <div className="mb-4">
                 <p className="text-sm text-gray-400 mb-4">{selectedTemplate.description}</p>
-                {selectedTemplate.primaryCompetencies && selectedTemplate.primaryCompetencies.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-4">
-                    {selectedTemplate.primaryCompetencies.map((comp) => (
-                      <span
-                        key={comp}
-                        className="text-xs px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20"
-                      >
-                        {competencyNames[comp] || comp}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                {selectedTemplate.primaryCompetencies &&
+                  selectedTemplate.primaryCompetencies.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-4">
+                      {selectedTemplate.primaryCompetencies.map(comp => (
+                        <span
+                          key={comp}
+                          className="text-xs px-2 py-1 rounded bg-primary/10 text-primary border border-primary/20"
+                        >
+                          {competencyNames[comp] || comp}
+                        </span>
+                      ))}
+                    </div>
+                  )}
               </div>
 
               <Input
                 label="에이전트 이름"
                 placeholder={`나만의 ${selectedTemplate.name}`}
                 value={newBotName}
-                onChange={(e) => setNewBotName(e.target.value)}
+                onChange={e => setNewBotName(e.target.value)}
                 autoFocus
               />
             </div>
@@ -519,10 +552,7 @@ export const Dashboard: React.FC = () => {
               >
                 취소
               </Button>
-              <Button
-                onClick={handleQuickCreate}
-                disabled={!newBotName || isCreating}
-              >
+              <Button onClick={handleQuickCreate} disabled={!newBotName || isCreating}>
                 {isCreating ? '생성 중...' : '생성하기'}
               </Button>
             </div>
@@ -536,7 +566,10 @@ export const Dashboard: React.FC = () => {
           <div className="bg-[#1A1A1A] border border-border rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh] my-4">
             <div className="p-6 border-b border-border flex justify-between items-center">
               <h2 className="text-xl font-bold text-white">새 파트너 추가</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-white">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="text-gray-400 hover:text-white"
+              >
                 <X size={24} />
               </button>
             </div>
@@ -547,7 +580,7 @@ export const Dashboard: React.FC = () => {
                   label="에이전트 이름"
                   placeholder="나의 전담 코치"
                   value={newBotName}
-                  onChange={(e) => setNewBotName(e.target.value)}
+                  onChange={e => setNewBotName(e.target.value)}
                   autoFocus
                 />
               </div>
@@ -560,25 +593,33 @@ export const Dashboard: React.FC = () => {
                     <div
                       key={tmpl.id}
                       onClick={() => setSelectedTemplateId(tmpl.id)}
-                      className={`p-4 rounded-xl border cursor-pointer transition-all ${selectedTemplateId === tmpl.id
-                        ? 'bg-[#252525] border-primary ring-1 ring-primary'
-                        : 'bg-[#1E1E1E] border-[#333] hover:border-gray-500'
-                        }`}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        selectedTemplateId === tmpl.id
+                          ? 'bg-[#252525] border-primary ring-1 ring-primary'
+                          : 'bg-[#1E1E1E] border-[#333] hover:border-gray-500'
+                      }`}
                     >
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-bold text-sm text-white">{tmpl.name}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${labelClass}`}>{tmpl.name}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${labelClass}`}>
+                          {tmpl.name}
+                        </span>
                       </div>
                       <p className="text-xs text-gray-400 line-clamp-2">{tmpl.description}</p>
                     </div>
-                  )
+                  );
                 })}
               </div>
             </div>
 
             <div className="p-6 border-t border-border flex justify-end gap-3">
-              <Button variant="ghost" onClick={() => setIsModalOpen(false)}>취소</Button>
-              <Button onClick={handleCreateBot} disabled={!newBotName || !selectedTemplateId || isCreating}>
+              <Button variant="ghost" onClick={() => setIsModalOpen(false)}>
+                취소
+              </Button>
+              <Button
+                onClick={handleCreateBot}
+                disabled={!newBotName || !selectedTemplateId || isCreating}
+              >
                 {isCreating ? '생성 중...' : '추가하기'}
               </Button>
             </div>

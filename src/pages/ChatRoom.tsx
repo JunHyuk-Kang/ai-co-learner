@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Send, MoreHorizontal, AlertCircle, Square, Book } from 'lucide-react';
 import { useBots } from '../contexts/BotContext';
 import { useChatStream } from '../hooks/useChatStream';
+import { logger } from '../utils/logger';
 
 export const ChatRoom: React.FC = () => {
   const { agentId } = useParams<{ agentId: string }>();
@@ -22,7 +23,7 @@ export const ChatRoom: React.FC = () => {
   const currentBot = bots.find(bot => bot.id === agentId);
 
   const { isStreaming, streamMessage, stopStream } = useChatStream({
-    onChunk: (chunk) => {
+    onChunk: chunk => {
       setSession(prev => {
         if (!prev) return null;
         const lastMsg = prev.messages[prev.messages.length - 1];
@@ -37,9 +38,9 @@ export const ChatRoom: React.FC = () => {
                 id: `ai-${Date.now()}`,
                 sender: 'ai',
                 text: chunk,
-                timestamp: Date.now()
-              }
-            ]
+                timestamp: Date.now(),
+              },
+            ],
           };
         }
 
@@ -51,7 +52,7 @@ export const ChatRoom: React.FC = () => {
               return { ...msg, text: msg.text + chunk };
             }
             return msg;
-          })
+          }),
         };
       });
     },
@@ -59,8 +60,8 @@ export const ChatRoom: React.FC = () => {
       // Optional: Refresh session from server to ensure sync
       // if (agentId) ChatService.getSession(agentId).then(setSession);
     },
-    onError: (error) => {
-      console.error("Streaming error:", error);
+    onError: error => {
+      logger.error('Streaming error:', error);
       setStreamError(error.message || 'Failed to stream message');
       // Show error message in chat
       setSession(prev => {
@@ -73,12 +74,12 @@ export const ChatRoom: React.FC = () => {
               id: `error-${Date.now()}`,
               sender: 'ai',
               text: `⚠️ Error: ${error.message || 'Failed to get response'}. Please try again.`,
-              timestamp: Date.now()
-            }
-          ]
+              timestamp: Date.now(),
+            },
+          ],
         };
       });
-    }
+    },
   });
 
   useEffect(() => {
@@ -108,8 +109,8 @@ export const ChatRoom: React.FC = () => {
         ...prev,
         messages: [
           ...prev.messages,
-          { id: `user-${Date.now()}`, sender: 'user', text: userText, timestamp: Date.now() }
-        ]
+          { id: `user-${Date.now()}`, sender: 'user', text: userText, timestamp: Date.now() },
+        ],
       };
     });
 
@@ -123,7 +124,10 @@ export const ChatRoom: React.FC = () => {
     }
   };
 
-  if (!session) return <div className="flex-1 flex items-center justify-center text-gray-500">Loading chat...</div>;
+  if (!session)
+    return (
+      <div className="flex-1 flex items-center justify-center text-gray-500">Loading chat...</div>
+    );
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -142,7 +146,12 @@ export const ChatRoom: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/knowledge-base')} title="Knowledge Base">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/knowledge-base')}
+            title="Knowledge Base"
+          >
             <Book size={20} className="text-gray-400 hover:text-white transition-colors" />
           </Button>
           <Button variant="ghost" size="sm">
@@ -170,7 +179,7 @@ export const ChatRoom: React.FC = () => {
             </div>
           )}
 
-          {session.messages.map((msg) => (
+          {session.messages.map(msg => (
             <ChatBubble
               key={msg.id}
               message={msg}
@@ -190,7 +199,7 @@ export const ChatRoom: React.FC = () => {
         <div className="max-w-3xl mx-auto relative">
           <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="메시지를 입력하세요..."
             disabled={isStreaming}
@@ -202,10 +211,10 @@ export const ChatRoom: React.FC = () => {
               className="absolute right-2 bottom-2 p-2 rounded-lg transition-colors z-10"
               style={{
                 backgroundColor: '#EF4444',
-                color: '#FFFFFF'
+                color: '#FFFFFF',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#DC2626'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#EF4444'}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#DC2626')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#EF4444')}
             >
               <Square size={18} fill="currentColor" />
             </button>

@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
-import { User as UserIcon, Mail, Shield, Award, Edit2, Save, X, Lock, Eye, EyeOff, Building2 } from 'lucide-react';
+import {
+  User as UserIcon,
+  Mail,
+  Shield,
+  Award,
+  Edit2,
+  Save,
+  X,
+  Lock,
+  Eye,
+  EyeOff,
+  Building2,
+} from 'lucide-react';
 import { UserService } from '../services/awsBackend';
 import { updatePassword } from 'aws-amplify/auth';
+import { logger } from '../utils/logger';
 
 export const UserProfile: React.FC = () => {
   const { user, logout } = useAuth();
@@ -53,7 +66,7 @@ export const UserProfile: React.FC = () => {
       }, 1500);
     } catch (err) {
       setError('프로필 업데이트 중 오류가 발생했습니다.');
-      console.error('Profile update error:', err);
+      logger.error('Profile update error:', err);
     } finally {
       setIsSaving(false);
     }
@@ -101,12 +114,14 @@ export const UserProfile: React.FC = () => {
       // Auto hide success message
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
-      console.error('Password change error:', err);
+      logger.error('Password change error:', err);
 
       if (err.name === 'NotAuthorizedException') {
         setError('현재 비밀번호가 올바르지 않습니다.');
       } else if (err.name === 'InvalidPasswordException') {
-        setError('새 비밀번호가 요구사항을 충족하지 않습니다. 최소 8자, 대소문자, 숫자, 특수문자를 포함해야 합니다.');
+        setError(
+          '새 비밀번호가 요구사항을 충족하지 않습니다. 최소 8자, 대소문자, 숫자, 특수문자를 포함해야 합니다.'
+        );
       } else if (err.name === 'LimitExceededException') {
         setError('비밀번호 변경 시도 횟수를 초과했습니다. 잠시 후 다시 시도해주세요.');
       } else {
@@ -191,7 +206,7 @@ export const UserProfile: React.FC = () => {
                       <input
                         type="text"
                         value={editedName}
-                        onChange={(e) => setEditedName(e.target.value)}
+                        onChange={e => setEditedName(e.target.value)}
                         className="w-full bg-gray-600 text-white px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none"
                         placeholder="이름을 입력하세요"
                       />
@@ -220,7 +235,7 @@ export const UserProfile: React.FC = () => {
                     <input
                       type="text"
                       value={editedOrganization}
-                      onChange={(e) => setEditedOrganization(e.target.value)}
+                      onChange={e => setEditedOrganization(e.target.value)}
                       className="w-full bg-gray-600 text-white px-3 py-2 rounded border border-gray-500 focus:border-blue-500 focus:outline-none"
                       placeholder="소속을 입력하세요 (예: ABC 회사, XYZ 대학교)"
                     />
@@ -309,7 +324,7 @@ export const UserProfile: React.FC = () => {
                         <input
                           type={showOldPassword ? 'text' : 'password'}
                           value={oldPassword}
-                          onChange={(e) => setOldPassword(e.target.value)}
+                          onChange={e => setOldPassword(e.target.value)}
                           className="w-full bg-gray-600 text-white px-3 py-2 pr-10 rounded border border-gray-500 focus:border-blue-500 focus:outline-none"
                           placeholder="현재 비밀번호"
                         />
@@ -330,7 +345,7 @@ export const UserProfile: React.FC = () => {
                         <input
                           type={showNewPassword ? 'text' : 'password'}
                           value={newPassword}
-                          onChange={(e) => setNewPassword(e.target.value)}
+                          onChange={e => setNewPassword(e.target.value)}
                           className="w-full bg-gray-600 text-white px-3 py-2 pr-10 rounded border border-gray-500 focus:border-blue-500 focus:outline-none"
                           placeholder="최소 8자 이상"
                         />
@@ -351,7 +366,7 @@ export const UserProfile: React.FC = () => {
                         <input
                           type={showConfirmPassword ? 'text' : 'password'}
                           value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          onChange={e => setConfirmPassword(e.target.value)}
                           className="w-full bg-gray-600 text-white px-3 py-2 pr-10 rounded border border-gray-500 focus:border-blue-500 focus:outline-none"
                           placeholder="새 비밀번호 확인"
                         />

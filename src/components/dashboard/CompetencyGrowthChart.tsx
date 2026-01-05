@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
 import { CompetencyHistoryService, CompetencyHistoryData } from '../../services/awsBackend';
+import { logger } from '../../utils/logger';
 
 interface CompetencyGrowthChartProps {
   userId: string;
@@ -25,7 +35,10 @@ const COMPETENCY_LABELS: Record<string, string> = {
   collaborationSignal: '협업력',
 };
 
-export const CompetencyGrowthChart: React.FC<CompetencyGrowthChartProps> = ({ userId, days = 30 }) => {
+export const CompetencyGrowthChart: React.FC<CompetencyGrowthChartProps> = ({
+  userId,
+  days = 30,
+}) => {
   const [historyData, setHistoryData] = useState<CompetencyHistoryData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +59,7 @@ export const CompetencyGrowthChart: React.FC<CompetencyGrowthChartProps> = ({ us
         setHistoryData([]);
       }
     } catch (err) {
-      console.error('Failed to load competency history:', err);
+      logger.error('Failed to load competency history:', err);
       setError('역량 성장 데이터를 불러오는데 실패했습니다.');
       setHistoryData([]);
     } finally {
@@ -57,13 +70,12 @@ export const CompetencyGrowthChart: React.FC<CompetencyGrowthChartProps> = ({ us
   // 차트용 데이터 포맷팅
   const chartData = historyData.map(day => ({
     date: new Date(day.date).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }),
-    ...day.competencies
+    ...day.competencies,
   }));
 
   // 데이터에 있는 역량만 추출
-  const availableCompetencies = historyData.length > 0
-    ? Object.keys(historyData[0].competencies)
-    : [];
+  const availableCompetencies =
+    historyData.length > 0 ? Object.keys(historyData[0].competencies) : [];
 
   if (loading) {
     return (
@@ -74,9 +86,7 @@ export const CompetencyGrowthChart: React.FC<CompetencyGrowthChartProps> = ({ us
   }
 
   if (error) {
-    return (
-      <div className="text-center text-red-400 py-8">{error}</div>
-    );
+    return <div className="text-center text-red-400 py-8">{error}</div>;
   }
 
   if (historyData.length === 0) {
@@ -85,7 +95,9 @@ export const CompetencyGrowthChart: React.FC<CompetencyGrowthChartProps> = ({ us
         <h2 className="text-xl font-bold text-gray-200 mb-4">역량 성장 추이</h2>
         <div className="text-center text-gray-400 py-12">
           <p className="mb-2">아직 충분한 데이터가 없습니다</p>
-          <p className="text-sm">AI 봇과 대화하면서 데이터가 쌓이면 여기에 성장 그래프가 표시됩니다</p>
+          <p className="text-sm">
+            AI 봇과 대화하면서 데이터가 쌓이면 여기에 성장 그래프가 표시됩니다
+          </p>
         </div>
       </div>
     );
@@ -101,28 +113,20 @@ export const CompetencyGrowthChart: React.FC<CompetencyGrowthChartProps> = ({ us
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-          <XAxis
-            dataKey="date"
-            stroke="#9ca3af"
-            style={{ fontSize: '12px' }}
-          />
-          <YAxis
-            stroke="#9ca3af"
-            style={{ fontSize: '12px' }}
-            domain={[0, 100]}
-          />
+          <XAxis dataKey="date" stroke="#9ca3af" style={{ fontSize: '12px' }} />
+          <YAxis stroke="#9ca3af" style={{ fontSize: '12px' }} domain={[0, 100]} />
           <Tooltip
             contentStyle={{
               backgroundColor: '#1E1E1E',
               border: '1px solid #333',
               borderRadius: '8px',
-              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.5)'
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.5)',
             }}
             labelStyle={{ color: '#e5e7eb', fontWeight: 'bold' }}
           />
           <Legend
             wrapperStyle={{ paddingTop: '20px' }}
-            formatter={(value) => COMPETENCY_LABELS[value] || value}
+            formatter={value => COMPETENCY_LABELS[value] || value}
           />
 
           {availableCompetencies.map(competency => (
@@ -155,14 +159,15 @@ export const CompetencyGrowthChart: React.FC<CompetencyGrowthChartProps> = ({ us
                   className="w-3 h-3 rounded-full"
                   style={{ backgroundColor: COMPETENCY_COLORS[competency] }}
                 />
-                <p className="text-xs font-medium text-gray-300">
-                  {COMPETENCY_LABELS[competency]}
-                </p>
+                <p className="text-xs font-medium text-gray-300">{COMPETENCY_LABELS[competency]}</p>
               </div>
               <div className="flex items-baseline gap-2">
                 <p className="text-lg font-bold text-gray-100">{latest}</p>
-                <p className={`text-xs font-semibold ${change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {change >= 0 ? '+' : ''}{change}
+                <p
+                  className={`text-xs font-semibold ${change >= 0 ? 'text-green-400' : 'text-red-400'}`}
+                >
+                  {change >= 0 ? '+' : ''}
+                  {change}
                 </p>
               </div>
             </div>
