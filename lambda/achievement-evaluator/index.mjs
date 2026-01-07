@@ -204,7 +204,9 @@ async function getUserStats(userId) {
     if (recentAnalytics.Items && recentAnalytics.Items.length > 0) {
       const dates = new Set();
       recentAnalytics.Items.forEach(item => {
-        const date = item.timestamp.split('T')[0];
+        // timestamp는 Unix timestamp (밀리초) 숫자 형식
+        const timestamp = typeof item.timestamp === 'number' ? item.timestamp : parseInt(item.timestamp);
+        const date = new Date(timestamp).toISOString().split('T')[0];
         dates.add(date);
       });
 
