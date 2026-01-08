@@ -16,6 +16,9 @@ dist-ssr
 .env.local
 .env
 
+# Claude Code settings (may contain sensitive data)
+.claude/settings.local.json
+
 # Lambda deployment files
 lambda/**/*.zip
 *.zip
