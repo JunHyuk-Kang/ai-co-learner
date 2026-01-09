@@ -197,14 +197,19 @@ VITE_API_GATEWAY_URL=https://oz20zs5lfc.execute-api.ap-northeast-2.amazonaws.com
 - 학습 패턴 분석
 
 **관리 기능**
-- 사용량 추적 & 비용 관리 시스템
+- **사용량 추적 & 비용 관리 시스템**
   - 실시간 토큰 사용량 추적 (입력/출력 토큰 분리)
   - 사용자별 비용 집계 (Gemini 2.5 Flash 요금 기준)
   - 관리자 대시보드 (일별 차트, 월간 예상 비용)
   - 기간별 필터링 (7/30/90일)
+- **관리자 권한 관리 시스템** ⭐ NEW
+  - CLI 스크립트로 역할 변경 (ADMIN/SUPER_USER/USER)
+  - 관리자 목록 조회 및 통계
+  - DynamoDB 직접 수정 (즉시 반영)
+  - 상세 가이드: [docs/admin-setup-guide.md](docs/admin-setup-guide.md)
 - 테스트 계정 대량 생성 도구 (학교용)
 - 봇 템플릿 관리 (생성, 수정, 삭제)
-- 사용자 관리 (역할 변경, 차단)
+- 사용자 관리 (역할 변경, 차단, 정보 수정)
 
 **코드 품질 & 테스트 (Sprint 1-3 완료)**
 - ✅ Vitest + React Testing Library 테스트 프레임워크
