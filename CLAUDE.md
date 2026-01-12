@@ -202,7 +202,14 @@ VITE_API_GATEWAY_URL=https://oz20zs5lfc.execute-api.ap-northeast-2.amazonaws.com
   - 사용자별 비용 집계 (Gemini 2.5 Flash 요금 기준)
   - 관리자 대시보드 (일별 차트, 월간 예상 비용)
   - 기간별 필터링 (7/30/90일)
-- **관리자 권한 관리 시스템** ⭐ NEW
+- **실시간 모니터링 대시보드** ⭐ NEW (2026-01-12)
+  - 5개 핵심 메트릭 카드 (활성 사용자, 대화 수, 역량 평균, 퀘스트 완료율, 이탈 위험)
+  - 인기 봇 Top 3 순위 및 사용량 추적
+  - 시간대별 활동 차트 (24시간 실시간 그래프)
+  - 이탈 위험 자동 감지 (7일 미접속 사용자 알림)
+  - 5초 안에 서비스 상태 파악 가능
+  - 상세 가이드: [docs/admin-dashboard-guide.md](docs/admin-dashboard-guide.md)
+- **관리자 권한 관리 시스템**
   - CLI 스크립트로 역할 변경 (ADMIN/SUPER_USER/USER)
   - 관리자 목록 조회 및 통계
   - DynamoDB 직접 수정 (즉시 반영)
@@ -470,6 +477,27 @@ return {
 ---
 
 ## 최근 주요 업데이트
+
+### 2026-01-12 (실시간 모니터링 대시보드 추가)
+- **관리자 대시보드 구축 완료**
+  - Lambda GET /admin/dashboard 엔드포인트 추가
+  - 5개 DynamoDB 테이블 실시간 집계 (chat-sessions, users, competencies, user-bots, daily-quests)
+  - 프론트엔드 MetricCard 컴포넌트 생성 (6가지 컬러 테마)
+  - AdminPanel에 Dashboard 탭 추가 (기본 뷰)
+  - 시간대별 활동 차트 구현 (Recharts LineChart)
+  - 상세 가이드 문서 작성 ([docs/admin-dashboard-guide.md](docs/admin-dashboard-guide.md))
+- **핵심 메트릭**
+  - 오늘 활성 사용자 (고유 userId 카운트)
+  - 오늘 대화 수 (총 메시지 수)
+  - 전체 평균 역량 (6개 역량 평균)
+  - 퀘스트 완료율 (오늘 완료/전체 비율)
+  - 7일 미접속 사용자 (이탈 위험 알림)
+  - 인기 봇 Top 3 (사용량 순위)
+  - 24시간 활동 패턴 (시간대별 그래프)
+- **Lambda 배포 완료**
+  - 코드 크기: 8.2MB
+  - 배포 상태: Successful
+  - 응답 시간: 평균 2-3초
 
 ### 2025-12-31 (Sprint 4 완료)
 - **문서 통합 완료**
