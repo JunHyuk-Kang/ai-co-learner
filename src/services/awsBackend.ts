@@ -373,6 +373,37 @@ export interface UsageStatsResponse {
   };
 }
 
+export interface TopBot {
+  botId: string;
+  name: string;
+  usageCount: number;
+}
+
+export interface HourlyActivity {
+  hour: string;
+  activeUsers: number;
+  messages: number;
+}
+
+export interface DashboardStatsResponse {
+  today: {
+    activeUsers: number;
+    totalMessages: number;
+    avgMessagesPerUser: number;
+    questCompletionRate: number;
+    completedQuests: number;
+    totalQuests: number;
+  };
+  overall: {
+    totalUsers: number;
+    avgCompetencyScore: number;
+    inactiveUsers7d: number;
+  };
+  topBots: TopBot[];
+  hourlyActivity: HourlyActivity[];
+  timestamp: string;
+}
+
 export const AdminService = {
   getAllUsers: async (adminUserId: string) => {
     try {
@@ -453,6 +484,17 @@ export const AdminService = {
       return data;
     } catch (error) {
       logger.error('Failed to get usage stats:', error);
+      throw error;
+    }
+  },
+
+  getDashboardStats: async (adminUserId: string): Promise<DashboardStatsResponse> => {
+    try {
+      const url = `/admin/dashboard?adminUserId=${adminUserId}`;
+      const data = await apiGet<DashboardStatsResponse>(url);
+      return data;
+    } catch (error) {
+      logger.error('Failed to get dashboard stats:', error);
       throw error;
     }
   },

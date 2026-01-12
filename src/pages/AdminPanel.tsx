@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { BotService, AdminService, UsageStatsResponse } from '../services/awsBackend';
+import {
+  BotService,
+  AdminService,
+  UsageStatsResponse,
+  DashboardStatsResponse,
+} from '../services/awsBackend';
 import { BotTemplate, User, Role } from '../types';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { MetricCard } from '../components/admin/MetricCard';
 import {
   Plus,
   Trash2,
@@ -15,6 +21,10 @@ import {
   DollarSign,
   TrendingUp,
   Activity,
+  LayoutDashboard,
+  MessageSquare,
+  Target,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   BarChart,
@@ -33,10 +43,11 @@ import { logger } from '../utils/logger';
 
 export const AdminPanel: React.FC = () => {
   const { user: currentUser } = useAuth();
-  const [view, setView] = useState<'templates' | 'users' | 'usage'>('templates');
+  const [view, setView] = useState<'dashboard' | 'templates' | 'users' | 'usage'>('dashboard');
   const [templates, setTemplates] = useState<BotTemplate[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [usageStats, setUsageStats] = useState<UsageStatsResponse | null>(null);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStatsResponse | null>(null);
   const [usageDays, setUsageDays] = useState<number>(30);
   const [isCreating, setIsCreating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -65,7 +76,9 @@ export const AdminPanel: React.FC = () => {
   const loadData = async () => {
     if (!currentUser) return;
 
-    if (view === 'templates') {
+    if (view === 'dashboard' && currentUser.role === Role.ADMIN) {
+      loadDashboardStats();
+    } else if (view === 'templates') {
       BotService.getTemplates().then(setTemplates);
     } else if (view === 'users' && currentUser.role === Role.ADMIN) {
       AdminService.getAllUsers(currentUser.id).then((users: any[]) => {
@@ -78,6 +91,16 @@ export const AdminPanel: React.FC = () => {
       });
     } else if (view === 'usage' && currentUser.role === Role.ADMIN) {
       loadUsageStats();
+    }
+  };
+
+  const loadDashboardStats = async () => {
+    if (!currentUser) return;
+    try {
+      const stats = await AdminService.getDashboardStats(currentUser.id);
+      setDashboardStats(stats);
+    } catch (error) {
+      logger.error('Failed to load dashboard stats:', error);
     }
   };
 
@@ -278,6 +301,15 @@ export const AdminPanel: React.FC = () => {
           </p>
         </div>
         <div className="flex bg-surface p-1 rounded-lg border border-border w-full md:w-auto">
+          {currentUser?.role === Role.ADMIN && (
+            <button
+              onClick={() => setView('dashboard')}
+              className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all ${view === 'dashboard' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
+            >
+              <LayoutDashboard size={16} className="inline mr-1 md:mr-2" />
+              대시보드
+            </button>
+          )}
           <button
             onClick={() => setView('templates')}
             className={`flex-1 md:flex-none px-3 md:px-4 py-2 rounded-md text-xs md:text-sm font-medium transition-all ${view === 'templates' ? 'bg-primary text-white shadow-md' : 'text-gray-400 hover:text-white'}`}
@@ -304,6 +336,132 @@ export const AdminPanel: React.FC = () => {
           )}
         </div>
       </header>
+
+      {/* --- DASHBOARD VIEW --- */}
+      {view === 'dashboard' && (
+        <>
+          <div className="mb-6 flex justify-end">
+            <Button onClick={loadDashboardStats}>
+              <Activity size={16} className="mr-2" />
+              새로고침
+            </Button>
+          </div>
+
+          {dashboardStats && (
+            <div className="space-y-6">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <MetricCard
+                  title="오늘 활성 사용자"
+                  value={`${dashboardStats.today.activeUsers}명`}
+                  icon={Users}
+                  color="blue"
+                  subtext={`평균 ${dashboardStats.today.avgMessagesPerUser}건/사용자`}
+                />
+
+                <MetricCard
+                  title="오늘 대화 수"
+                  value={`${dashboardStats.today.totalMessages}건`}
+                  icon={MessageSquare}
+                  color="green"
+                  subtext={`${dashboardStats.today.activeUsers}명이 활동 중`}
+                />
+
+                <MetricCard
+                  title="전체 평균 역량"
+                  value={`${dashboardStats.overall.avgCompetencyScore}점`}
+                  icon={TrendingUp}
+                  color="purple"
+                  subtext={`총 ${dashboardStats.overall.totalUsers}명 사용자`}
+                />
+
+                <MetricCard
+                  title="퀘스트 완료율"
+                  value={`${dashboardStats.today.questCompletionRate}%`}
+                  icon={Target}
+                  color="teal"
+                  subtext={`${dashboardStats.today.completedQuests}/${dashboardStats.today.totalQuests}개 완료`}
+                />
+
+                <MetricCard
+                  title="7일 미접속"
+                  value={`${dashboardStats.overall.inactiveUsers7d}명`}
+                  icon={AlertTriangle}
+                  color="red"
+                  alert={dashboardStats.overall.inactiveUsers7d > 10}
+                  subtext="이탈 위험 사용자"
+                />
+              </div>
+
+              {/* Top Bots */}
+              {dashboardStats.topBots.length > 0 && (
+                <Card>
+                  <h3 className="text-lg font-bold text-white mb-4">인기 봇 Top 3</h3>
+                  <div className="space-y-3">
+                    {dashboardStats.topBots.map((bot, index) => (
+                      <div
+                        key={bot.botId}
+                        className="flex items-center justify-between p-3 bg-[#121212] rounded-lg"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white">{bot.name}</p>
+                            <p className="text-xs text-gray-500">봇 ID: {bot.botId}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-white">{bot.usageCount}</p>
+                          <p className="text-xs text-gray-500">사용 횟수</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* Hourly Activity Chart */}
+              <Card>
+                <h3 className="text-lg font-bold text-white mb-4">시간대별 활동 (오늘)</h3>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={dashboardStats.hourlyActivity}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                    <XAxis dataKey="hour" stroke="#888" style={{ fontSize: 12 }} />
+                    <YAxis stroke="#888" style={{ fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#1a1a1a', border: '1px solid #333' }}
+                      labelStyle={{ color: '#fff' }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="activeUsers"
+                      stroke="#3b82f6"
+                      name="활성 사용자"
+                      strokeWidth={2}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="messages"
+                      stroke="#10b981"
+                      name="메시지 수"
+                      strokeWidth={2}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Card>
+            </div>
+          )}
+
+          {!dashboardStats && (
+            <div className="text-center py-12">
+              <p className="text-gray-400">대시보드 데이터를 불러오는 중...</p>
+            </div>
+          )}
+        </>
+      )}
 
       {/* --- TEMPLATES VIEW --- */}
       {view === 'templates' && (

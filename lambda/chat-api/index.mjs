@@ -226,6 +226,10 @@ export const handler = async (event) => {
       return await getUsageStats(event, headers);
     }
 
+    if (method === 'GET' && path.includes('/admin/dashboard')) {
+      return await getDashboardStats(event, headers);
+    }
+
     // Assessment APIs
     if (method === 'POST' && path.includes('/assessment/start')) {
       return await startAssessment(event, headers);
@@ -1712,6 +1716,202 @@ async function getUsageStats(event, headers) {
     };
   } catch (error) {
     console.error('Get usage stats error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: error.message })
+    };
+  }
+}
+
+// 대시보드 통계 조회 (관리자용)
+async function getDashboardStats(event, headers) {
+  try {
+    // Query parameters
+    const adminUserId = event.queryStringParameters?.adminUserId;
+
+    if (!adminUserId) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Missing adminUserId parameter" })
+      };
+    }
+
+    // 권한 체크: ADMIN만 가능
+    const roleCheck = await checkUserRole(adminUserId, ['ADMIN']);
+    if (!roleCheck.authorized) {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: roleCheck.error })
+      };
+    }
+
+    const now = Date.now();
+    const todayStart = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+
+    // 1. 오늘 활성 사용자 수 (chat-sessions에서 오늘 메시지를 보낸 사용자)
+    const sessionsResult = await dynamoClient.send(new ScanCommand({
+      TableName: SESSIONS_TABLE,
+      FilterExpression: '#timestamp >= :todayStart',
+      ExpressionAttributeNames: {
+        '#timestamp': 'timestamp'
+      },
+      ExpressionAttributeValues: {
+        ':todayStart': todayStart
+      }
+    }));
+
+    const todayMessages = sessionsResult.Items || [];
+    const activeUsersToday = new Set(todayMessages.map(msg => msg.userId)).size;
+    const totalMessagesToday = todayMessages.length;
+    const avgMessagesPerUser = activeUsersToday > 0 ? (totalMessagesToday / activeUsersToday).toFixed(1) : 0;
+
+    // 2. 전체 사용자 수 및 역량 평균
+    const usersResult = await dynamoClient.send(new ScanCommand({
+      TableName: USERS_TABLE
+    }));
+
+    const allUsers = usersResult.Items || [];
+    const totalUsers = allUsers.length;
+
+    // 7일 미접속 사용자 (이탈 위험)
+    const inactiveUsers7d = allUsers.filter(user => {
+      const lastLogin = user.lastLoginAt ? new Date(user.lastLoginAt).getTime() : 0;
+      return (now - lastLogin) > sevenDaysAgo;
+    }).length;
+
+    // 3. 역량 평균 점수
+    const competenciesResult = await dynamoClient.send(new ScanCommand({
+      TableName: COMPETENCIES_TABLE
+    }));
+
+    const allCompetencies = competenciesResult.Items || [];
+    let totalCompetencyScore = 0;
+    let competencyCount = 0;
+
+    allCompetencies.forEach(comp => {
+      const scores = comp.competencyScores || {};
+      const scoreValues = Object.values(scores).filter(s => typeof s === 'number');
+      if (scoreValues.length > 0) {
+        totalCompetencyScore += scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length;
+        competencyCount++;
+      }
+    });
+
+    const avgCompetencyScore = competencyCount > 0
+      ? (totalCompetencyScore / competencyCount).toFixed(1)
+      : 0;
+
+    // 4. 인기 봇 Top 3 (user-bots 테이블에서 봇별 사용 빈도)
+    const userBotsResult = await dynamoClient.send(new ScanCommand({
+      TableName: USER_BOTS_TABLE
+    }));
+
+    const userBots = userBotsResult.Items || [];
+    const botUsageCount = {};
+
+    userBots.forEach(bot => {
+      const templateId = bot.templateId;
+      botUsageCount[templateId] = (botUsageCount[templateId] || 0) + 1;
+    });
+
+    // 봇 이름 조회
+    const templatesResult = await dynamoClient.send(new ScanCommand({
+      TableName: TEMPLATES_TABLE
+    }));
+
+    const templates = templatesResult.Items || [];
+    const templateMap = {};
+    templates.forEach(tmpl => {
+      templateMap[tmpl.templateId] = tmpl.name;
+    });
+
+    const topBots = Object.entries(botUsageCount)
+      .map(([botId, count]) => ({
+        botId,
+        name: templateMap[botId] || 'Unknown Bot',
+        usageCount: count
+      }))
+      .sort((a, b) => b.usageCount - a.usageCount)
+      .slice(0, 3);
+
+    // 5. 퀘스트 완료율 (오늘)
+    const questsResult = await dynamoClient.send(new ScanCommand({
+      TableName: QUESTS_TABLE
+    }));
+
+    const todayDate = new Date().toISOString().split('T')[0];
+    const todayQuests = (questsResult.Items || []).filter(quest =>
+      quest.questDate === todayDate
+    );
+
+    let totalQuests = 0;
+    let completedQuests = 0;
+
+    todayQuests.forEach(userQuest => {
+      const quests = userQuest.quests || [];
+      totalQuests += quests.length;
+      completedQuests += quests.filter(q => q.completed).length;
+    });
+
+    const questCompletionRate = totalQuests > 0
+      ? (completedQuests / totalQuests * 100).toFixed(0)
+      : 0;
+
+    // 6. 시간대별 활동 (최근 24시간)
+    const hourlyActivity = Array.from({ length: 24 }, (_, i) => ({
+      hour: `${i.toString().padStart(2, '0')}:00`,
+      activeUsers: 0,
+      messages: 0
+    }));
+
+    todayMessages.forEach(msg => {
+      const hour = new Date(msg.timestamp).getHours();
+      if (hour >= 0 && hour < 24) {
+        hourlyActivity[hour].messages++;
+      }
+    });
+
+    // 시간대별 활성 사용자 수 계산
+    const hourlyUserSets = Array.from({ length: 24 }, () => new Set());
+    todayMessages.forEach(msg => {
+      const hour = new Date(msg.timestamp).getHours();
+      if (hour >= 0 && hour < 24) {
+        hourlyUserSets[hour].add(msg.userId);
+      }
+    });
+
+    hourlyActivity.forEach((item, i) => {
+      item.activeUsers = hourlyUserSets[i].size;
+    });
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        today: {
+          activeUsers: activeUsersToday,
+          totalMessages: totalMessagesToday,
+          avgMessagesPerUser: parseFloat(avgMessagesPerUser),
+          questCompletionRate: parseFloat(questCompletionRate),
+          completedQuests,
+          totalQuests: totalQuests
+        },
+        overall: {
+          totalUsers,
+          avgCompetencyScore: parseFloat(avgCompetencyScore),
+          inactiveUsers7d
+        },
+        topBots,
+        hourlyActivity,
+        timestamp: new Date().toISOString()
+      })
+    };
+  } catch (error) {
+    console.error('Get dashboard stats error:', error);
     return {
       statusCode: 500,
       headers,
