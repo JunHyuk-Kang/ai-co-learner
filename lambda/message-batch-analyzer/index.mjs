@@ -15,7 +15,7 @@ const ANALYTICS_TABLE = process.env.ANALYTICS_TABLE || "ai-co-learner-learning-a
 const MODEL_ID = "gemini-2.5-flash";
 
 const BATCH_SIZE = 30; // 한 번에 분석할 메시지 수
-const LOOKBACK_MINUTES = 5; // 최근 5분간 메시지 조회
+const LOOKBACK_MINUTES = 43200; // 최근 30일간 메시지 조회 (임시: 디버깅용)
 
 // Exponential Backoff 재시도 설정
 const RETRY_CONFIG = {
@@ -235,7 +235,8 @@ async function saveAnalysisResults(results) {
   const chunks = chunkArray(results, 25);
 
   for (const chunk of chunks) {
-    const putRequests = chunk.map(result => ({
+    // learning-analytics 테이블에 저장
+    const analyticsRequests = chunk.map(result => ({
       PutRequest: {
         Item: {
           userId: result.userId,
@@ -245,7 +246,7 @@ async function saveAnalysisResults(results) {
           messageType: result.analysis.messageType || "question",
           userMessage: result.userMessage,
           aiMessage: result.aiMessage,
-          competencyScores: {
+          analysisResult: {
             questionQuality: result.analysis.questionQuality,
             thinkingDepth: result.analysis.thinkingDepth,
             creativity: result.analysis.creativity,
@@ -259,9 +260,21 @@ async function saveAnalysisResults(results) {
       }
     }));
 
+    // chat-sessions 테이블에 analyzed 플래그 설정
+    const sessionRequests = chunk.map(result => ({
+      PutRequest: {
+        Item: {
+          ...result,
+          analyzed: true, // 분석 완료 표시
+          analysisTimestamp: Date.now()
+        }
+      }
+    }));
+
     await dynamoClient.send(new BatchWriteCommand({
       RequestItems: {
-        [ANALYTICS_TABLE]: putRequests
+        [ANALYTICS_TABLE]: analyticsRequests,
+        [SESSIONS_TABLE]: sessionRequests
       }
     }));
   }

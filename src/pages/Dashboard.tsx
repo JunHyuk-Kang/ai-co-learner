@@ -7,7 +7,7 @@ import { LearningInsights } from '../components/dashboard/LearningInsights';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { BotService, UserService, AchievementService, Achievement } from '../services/awsBackend';
-import { BotTemplate } from '../types';
+import { BotTemplate, SubscriptionTier, TIER_CONFIGS } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   MessageSquare,
@@ -22,6 +22,9 @@ import {
   Target,
   Sparkles,
   Flame,
+  Zap,
+  Clock,
+  TrendingUp,
 } from 'lucide-react';
 import { logger } from '../utils/logger';
 
@@ -90,6 +93,7 @@ export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasCompetencies, setHasCompetencies] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const [templates, setTemplates] = useState<BotTemplate[]>([]);
   const [recommendedTemplates, setRecommendedTemplates] = useState<BotTemplate[]>([]);
@@ -224,8 +228,103 @@ export const Dashboard: React.FC = () => {
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT COLUMN (Radar & Badges) */}
+        {/* LEFT COLUMN (Subscription, Radar & Badges) */}
         <div className="lg:col-span-4 space-y-6">
+          {/* Subscription Widget */}
+          {user.subscriptionTier !== SubscriptionTier.UNLIMITED && (
+            <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-xl p-6 border border-primary/20">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-primary/20">
+                    <Zap className="text-primary" size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white">구독 플랜</h3>
+                    <p className="text-xs text-gray-400">
+                      {TIER_CONFIGS[user.subscriptionTier]?.displayName || user.subscriptionTier}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`px-2 py-1 rounded text-xs font-bold ${TIER_CONFIGS[user.subscriptionTier]?.colorClass || 'bg-gray-500'} text-white`}
+                >
+                  {user.subscriptionTier}
+                </span>
+              </div>
+
+              {/* Message Quota Progress */}
+              {user.messageQuota && (
+                <div className="mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs text-gray-400">메시지 사용량</span>
+                    <span className="text-xs font-bold text-white">
+                      {user.messageQuota.currentMonthUsage} / {user.messageQuota.monthlyLimit}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-surface rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${
+                        (user.messageQuota.currentMonthUsage / user.messageQuota.monthlyLimit) *
+                          100 >=
+                        90
+                          ? 'bg-error'
+                          : (user.messageQuota.currentMonthUsage / user.messageQuota.monthlyLimit) *
+                                100 >=
+                              70
+                            ? 'bg-amber-500'
+                            : 'bg-primary'
+                      } transition-all`}
+                      style={{
+                        width: `${Math.min((user.messageQuota.currentMonthUsage / user.messageQuota.monthlyLimit) * 100, 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {Math.round(
+                      (user.messageQuota.currentMonthUsage / user.messageQuota.monthlyLimit) * 100
+                    )}
+                    % 사용
+                  </p>
+                </div>
+              )}
+
+              {/* Trial Period Countdown */}
+              {user.subscriptionTier === SubscriptionTier.TRIAL && user.trialPeriod && (
+                <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Clock size={14} className="text-blue-400" />
+                    <span className="text-xs font-bold text-blue-400">체험 기간</span>
+                  </div>
+                  <p className="text-sm text-white font-bold">
+                    {user.trialPeriod.daysRemaining}일 남음
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {new Date(user.trialPeriod.endDate).toLocaleDateString('ko-KR')}까지
+                  </p>
+                </div>
+              )}
+
+              {/* Features List */}
+              <div className="mb-4 space-y-1">
+                {TIER_CONFIGS[user.subscriptionTier]?.features.slice(0, 3).map((feature, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs text-gray-300">
+                    <TrendingUp size={12} className="text-primary" />
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Upgrade Button */}
+              <button
+                onClick={() => setShowUpgradeModal(true)}
+                className="w-full py-2 px-4 bg-primary hover:bg-primary-hover text-white rounded-lg font-bold text-sm transition-colors flex items-center justify-center gap-2"
+              >
+                <Zap size={16} />
+                플랜 업그레이드
+              </button>
+            </div>
+          )}
+
           {/* Radar Chart Card */}
           <div className="bg-[#1E1E1E] rounded-xl p-6 border border-[#333]">
             <div className="flex justify-between items-center mb-4">
@@ -622,6 +721,71 @@ export const Dashboard: React.FC = () => {
               >
                 {isCreating ? '생성 중...' : '추가하기'}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upgrade Contact Modal */}
+      {showUpgradeModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-border rounded-xl max-w-md w-full p-6 shadow-xl">
+            <div className="flex items-start gap-4 mb-4">
+              <div className="p-3 rounded-full bg-primary/20">
+                <Zap className="text-primary" size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white mb-2">플랜 업그레이드 문의</h3>
+                <p className="text-sm text-gray-300">
+                  더 많은 메시지와 기능을 사용하고 싶으신가요?
+                  <br />
+                  관리자에게 문의해주세요.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 mb-6 bg-background/50 p-4 rounded-lg">
+              <div>
+                <p className="text-xs text-gray-400 mb-1">현재 티어</p>
+                <p className="text-sm text-white font-bold">{user.subscriptionTier}</p>
+              </div>
+              {user.messageQuota && (
+                <div>
+                  <p className="text-xs text-gray-400 mb-1">사용량</p>
+                  <p className="text-sm text-white font-bold">
+                    {user.messageQuota.currentMonthUsage} /{' '}
+                    {user.messageQuota.monthlyLimit === -1
+                      ? '무제한'
+                      : user.messageQuota.monthlyLimit}
+                  </p>
+                </div>
+              )}
+              <div className="pt-3 border-t border-border">
+                <p className="text-xs text-gray-400 mb-2">문의 방법</p>
+                <p className="text-sm text-white">
+                  관리자에게 직접 연락하여 플랜 업그레이드를 요청하세요.
+                </p>
+                <p className="text-xs text-gray-400 mt-2">
+                  관리자가 귀하의 계정을 원하는 티어로 변경해드립니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="flex-1 px-4 py-2 bg-surface border border-border text-white rounded-lg hover:bg-border/20 transition-colors"
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  setShowUpgradeModal(false);
+                }}
+                className="flex-1 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors font-bold"
+              >
+                확인
+              </button>
             </div>
           </div>
         </div>

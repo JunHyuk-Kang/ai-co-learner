@@ -39,6 +39,9 @@ check-*.py
 create-zip.mjs
 lambdachat-apiscripts/
 
+# Temporary Claude Code files
+tmpclaude-*
+
 # Demo and test scripts with sensitive data
 scripts/create-demo-account.mjs
 scripts/add-badges.mjs

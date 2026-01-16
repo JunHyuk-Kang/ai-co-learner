@@ -222,6 +222,31 @@ export const handler = async (event) => {
       return await blockUser(event, headers);
     }
 
+    // 구독 관리 엔드포인트
+    if (method === 'POST' && path.includes('/admin/subscription/update-tier')) {
+      return await updateSubscriptionTier(event, headers);
+    }
+
+    if (method === 'POST' && path.includes('/admin/subscription/reset-quota')) {
+      return await resetUserQuota(event, headers);
+    }
+
+    if (method === 'POST' && path.includes('/admin/subscription/extend-trial')) {
+      return await extendTrialPeriod(event, headers);
+    }
+
+    if (method === 'GET' && path.includes('/admin/subscription/stats')) {
+      return await getSubscriptionStats(event, headers);
+    }
+
+    if (method === 'POST' && path.includes('/admin/subscription/update-group-tier')) {
+      return await updateGroupTier(event, headers);
+    }
+
+    if (method === 'GET' && path.includes('/admin/subscription/organizations')) {
+      return await getOrganizationList(event, headers);
+    }
+
     if (method === 'GET' && path.includes('/admin/usage')) {
       return await getUsageStats(event, headers);
     }
@@ -507,6 +532,90 @@ async function sendChatMessageStream(event, headers) {
   }
 
   try {
+    // 0. 사용자 정보 조회 및 구독 체크
+    const userResponse = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId }
+    }));
+
+    if (!userResponse.Item) {
+      return {
+        statusCode: 404,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ error: "User not found" })
+      };
+    }
+
+    const user = userResponse.Item;
+
+    // 구독 티어 확인 (없으면 기본값 UNLIMITED - 기존 사용자)
+    const subscriptionTier = user.subscriptionTier || 'UNLIMITED';
+    const messageQuota = user.messageQuota || { monthlyLimit: -1, currentMonthUsage: 0 };
+    const trialPeriod = user.trialPeriod;
+
+    console.log("User subscription check:", {
+      userId,
+      tier: subscriptionTier,
+      quota: messageQuota
+    });
+
+    // TRIAL 티어: 체험 기간 만료 체크
+    if (subscriptionTier === 'TRIAL' && trialPeriod) {
+      const now = new Date();
+      const endDate = new Date(trialPeriod.endDate);
+
+      if (now > endDate) {
+        console.warn("Trial expired for user:", userId);
+        return {
+          statusCode: 403,
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            error: 'TRIAL_EXPIRED',
+            message: '30일 체험 기간이 종료되었습니다. 업그레이드하여 계속 사용하세요.',
+            expiredDate: trialPeriod.endDate,
+            tier: subscriptionTier
+          })
+        };
+      }
+    }
+
+    // UNLIMITED가 아닌 경우: 메시지 할당량 체크
+    if (subscriptionTier !== 'UNLIMITED') {
+      const monthlyLimit = messageQuota.monthlyLimit;
+      const currentUsage = messageQuota.currentMonthUsage || 0;
+
+      // 할당량 초과 체크
+      if (currentUsage >= monthlyLimit) {
+        console.warn("Quota exceeded for user:", userId, {
+          usage: currentUsage,
+          limit: monthlyLimit,
+          tier: subscriptionTier
+        });
+
+        return {
+          statusCode: 403,
+          headers: {
+            ...headers,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            error: 'QUOTA_EXCEEDED',
+            message: `월 메시지 한도(${monthlyLimit}개)에 도달했습니다. 다음 달에 초기화됩니다.`,
+            currentUsage,
+            monthlyLimit,
+            resetDate: messageQuota.nextResetDate,
+            tier: subscriptionTier
+          })
+        };
+      }
+    }
+
     // 1. 템플릿 및 봇 정보 조회 (기존 로직 재사용)
     const allTemplates = await dynamoClient.send(new ScanCommand({
       TableName: TEMPLATES_TABLE
@@ -665,12 +774,67 @@ async function sendChatMessageStream(event, headers) {
       }
     }));
 
-    // 7. 사용량 추적 (비동기, 응답에 영향 없음)
+    // 7. 메시지 할당량 증가 (UNLIMITED가 아닌 경우만)
+    if (subscriptionTier !== 'UNLIMITED') {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const lastResetDate = messageQuota.lastResetDate || today;
+
+        // 월이 바뀌었는지 체크 (자동 리셋)
+        const shouldReset = lastResetDate < today.substring(0, 7); // YYYY-MM 비교
+
+        if (shouldReset) {
+          // 새 달 시작: usage 리셋
+          const nextMonth = new Date(today);
+          nextMonth.setMonth(nextMonth.getMonth() + 1);
+          const firstDayNextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1)
+            .toISOString().split('T')[0];
+
+          await dynamoClient.send(new UpdateCommand({
+            TableName: USERS_TABLE,
+            Key: { userId },
+            UpdateExpression: `
+              SET messageQuota.currentMonthUsage = :one,
+                  messageQuota.lastResetDate = :today,
+                  messageQuota.nextResetDate = :nextMonth
+            `,
+            ExpressionAttributeValues: {
+              ':one': 1,
+              ':today': today,
+              ':nextMonth': firstDayNextMonth
+            }
+          }));
+
+          console.log("Quota reset and incremented for new month:", userId);
+        } else {
+          // 같은 달: usage 증가
+          await dynamoClient.send(new UpdateCommand({
+            TableName: USERS_TABLE,
+            Key: { userId },
+            UpdateExpression: 'ADD messageQuota.currentMonthUsage :inc',
+            ExpressionAttributeValues: {
+              ':inc': 1
+            }
+          }));
+
+          console.log("Quota incremented:", {
+            userId,
+            newUsage: (messageQuota.currentMonthUsage || 0) + 1,
+            limit: messageQuota.monthlyLimit
+          });
+        }
+      } catch (quotaError) {
+        console.error("Failed to update quota (non-blocking):", quotaError);
+        // 에러가 발생해도 메시지 전송은 성공으로 처리 (사용자 경험 우선)
+      }
+    }
+
+    // 8. 사용량 추적 (비동기, 응답에 영향 없음)
     trackUsage(userId, sessionId, inputTokens, outputTokens, MODEL_ID).catch(err => {
       console.error("Failed to track usage (non-blocking):", err);
     });
 
-    // 8. 스트리밍 응답 반환 (newline-delimited JSON)
+    // 9. 스트리밍 응답 반환 (newline-delimited JSON)
     const streamResponse = chunks.map(c => JSON.stringify(c)).join('\n') +
       '\n' + JSON.stringify({ type: 'done', messageId, timestamp });
 
@@ -3283,6 +3447,671 @@ async function getLearningAnalysis(event, headers) {
       statusCode: 500,
       headers,
       body: JSON.stringify({ error: error.message })
+    };
+  }
+}
+
+// 사용자 구독 티어 변경
+async function updateSubscriptionTier(event, headers) {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { adminUserId, targetUserId, newTier } = body;
+
+    console.log('Updating subscription tier:', { adminUserId, targetUserId, newTier });
+
+    // 관리자 권한 확인
+    const adminUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: adminUserId }
+    }));
+
+    if (!adminUser.Item || adminUser.Item.role !== 'ADMIN') {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: 'FORBIDDEN', message: 'Admin access required' })
+      };
+    }
+
+    // 유효한 티어인지 확인
+    const validTiers = ['FREE', 'TRIAL', 'PREMIUM', 'UNLIMITED'];
+    if (!validTiers.includes(newTier)) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'VALIDATION_ERROR', message: `Invalid tier: ${newTier}` })
+      };
+    }
+
+    // 대상 사용자 조회
+    const targetUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: targetUserId }
+    }));
+
+    if (!targetUser.Item) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: 'NOT_FOUND', message: 'User not found' })
+      };
+    }
+
+    const oldTier = targetUser.Item.subscriptionTier || 'UNLIMITED';
+
+    // 티어별 할당량 설정
+    const tierLimits = {
+      'FREE': 50,
+      'TRIAL': 1000,
+      'PREMIUM': 1500,
+      'UNLIMITED': -1
+    };
+
+    const today = new Date().toISOString().split('T')[0];
+    const nextMonth = new Date(today);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const firstDayNextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1)
+      .toISOString().split('T')[0];
+
+    // 구독 티어 업데이트 - messageQuota를 전체 객체로 설정 (중첩 경로 오류 방지)
+    const updateExpression = [
+      'subscriptionTier = :tier',
+      'messageQuota = :quota'
+    ];
+
+    const expressionValues = {
+      ':tier': newTier,
+      ':quota': {
+        monthlyLimit: tierLimits[newTier],
+        currentMonthUsage: 0,
+        lastResetDate: today,
+        nextResetDate: firstDayNextMonth
+      }
+    };
+
+    // TRIAL 티어인 경우 체험 기간 설정
+    if (newTier === 'TRIAL') {
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + 30);
+
+      updateExpression.push('trialPeriod = :trialPeriod');
+      expressionValues[':trialPeriod'] = {
+        startDate: new Date().toISOString(),
+        endDate: trialEnd.toISOString(),
+        isExpired: false,
+        daysRemaining: 30
+      };
+    } else {
+      // TRIAL이 아니면 체험 기간 제거
+      updateExpression.push('trialPeriod = :null');
+      expressionValues[':null'] = null;
+    }
+
+    // 메타데이터 업데이트
+    updateExpression.push('subscriptionMetadata = :metadata');
+    expressionValues[':metadata'] = {
+      upgradedAt: new Date().toISOString(),
+      upgradedFrom: oldTier,
+      autoRenew: true,
+      billingCycle: newTier === 'UNLIMITED' || newTier === 'PREMIUM' ? 'lifetime' : 'monthly'
+    };
+
+    await dynamoClient.send(new UpdateCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: targetUserId },
+      UpdateExpression: `SET ${updateExpression.join(', ')}`,
+      ExpressionAttributeValues: expressionValues
+    }));
+
+    console.log('Subscription tier updated:', { targetUserId, oldTier, newTier });
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        message: `Subscription tier updated: ${oldTier} → ${newTier}`,
+        user: {
+          userId: targetUserId,
+          oldTier,
+          newTier,
+          monthlyLimit: tierLimits[newTier]
+        }
+      })
+    };
+  } catch (error) {
+    console.error('Update subscription tier error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+    };
+  }
+}
+
+// 사용자 메시지 할당량 리셋
+async function resetUserQuota(event, headers) {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { adminUserId, targetUserId } = body;
+
+    console.log('Resetting quota for user:', { adminUserId, targetUserId });
+
+    // 관리자 권한 확인
+    const adminUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: adminUserId }
+    }));
+
+    if (!adminUser.Item || adminUser.Item.role !== 'ADMIN') {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: 'FORBIDDEN', message: 'Admin access required' })
+      };
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const nextMonth = new Date(today);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const firstDayNextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1)
+      .toISOString().split('T')[0];
+
+    // 대상 사용자 조회해서 기존 quota 정보 가져오기
+    const targetUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: targetUserId }
+    }));
+
+    if (!targetUser.Item) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: 'NOT_FOUND', message: 'User not found' })
+      };
+    }
+
+    const existingQuota = targetUser.Item.messageQuota || {};
+
+    await dynamoClient.send(new UpdateCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: targetUserId },
+      UpdateExpression: 'SET messageQuota = :quota',
+      ExpressionAttributeValues: {
+        ':quota': {
+          monthlyLimit: existingQuota.monthlyLimit || -1,
+          currentMonthUsage: 0,
+          lastResetDate: today,
+          nextResetDate: firstDayNextMonth
+        }
+      }
+    }));
+
+    console.log('Quota reset completed:', targetUserId);
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        message: 'Message quota has been reset',
+        userId: targetUserId,
+        resetDate: today
+      })
+    };
+  } catch (error) {
+    console.error('Reset quota error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+    };
+  }
+}
+
+// 체험 기간 연장
+async function extendTrialPeriod(event, headers) {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { adminUserId, targetUserId, additionalDays } = body;
+
+    console.log('Extending trial period:', { adminUserId, targetUserId, additionalDays });
+
+    // 관리자 권한 확인
+    const adminUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: adminUserId }
+    }));
+
+    if (!adminUser.Item || adminUser.Item.role !== 'ADMIN') {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: 'FORBIDDEN', message: 'Admin access required' })
+      };
+    }
+
+    // 대상 사용자 조회
+    const targetUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: targetUserId }
+    }));
+
+    if (!targetUser.Item) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: 'NOT_FOUND', message: 'User not found' })
+      };
+    }
+
+    // TRIAL 티어가 아니면 에러
+    if (targetUser.Item.subscriptionTier !== 'TRIAL') {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'VALIDATION_ERROR',
+          message: 'User is not on TRIAL tier',
+          currentTier: targetUser.Item.subscriptionTier
+        })
+      };
+    }
+
+    // 현재 체험 종료일에서 연장
+    const currentTrialPeriod = targetUser.Item.trialPeriod || { startDate: new Date().toISOString() };
+    const currentEndDate = currentTrialPeriod.endDate || new Date().toISOString();
+    const newEndDate = new Date(currentEndDate);
+    newEndDate.setDate(newEndDate.getDate() + (additionalDays || 30));
+
+    const now = new Date();
+    const daysRemaining = Math.ceil((newEndDate - now) / (1000 * 60 * 60 * 24));
+
+    await dynamoClient.send(new UpdateCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: targetUserId },
+      UpdateExpression: 'SET trialPeriod = :trialPeriod',
+      ExpressionAttributeValues: {
+        ':trialPeriod': {
+          startDate: currentTrialPeriod.startDate,
+          endDate: newEndDate.toISOString(),
+          isExpired: false,
+          daysRemaining: daysRemaining
+        }
+      }
+    }));
+
+    console.log('Trial period extended:', { targetUserId, newEndDate: newEndDate.toISOString() });
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        message: `Trial period extended by ${additionalDays} days`,
+        userId: targetUserId,
+        newEndDate: newEndDate.toISOString(),
+        daysRemaining
+      })
+    };
+  } catch (error) {
+    console.error('Extend trial period error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+    };
+  }
+}
+
+// 구독 통계 조회
+async function getSubscriptionStats(event, headers) {
+  try {
+    const adminUserId = event.queryStringParameters?.adminUserId;
+
+    console.log('Getting subscription stats, adminUserId:', adminUserId);
+
+    // 관리자 권한 확인
+    const adminUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: adminUserId }
+    }));
+
+    if (!adminUser.Item || adminUser.Item.role !== 'ADMIN') {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: 'FORBIDDEN', message: 'Admin access required' })
+      };
+    }
+
+    // 모든 사용자 조회
+    const usersResponse = await dynamoClient.send(new ScanCommand({
+      TableName: USERS_TABLE
+    }));
+
+    const users = usersResponse.Items || [];
+
+    // 티어별 분포
+    const tierDistribution = {
+      FREE: 0,
+      TRIAL: 0,
+      PREMIUM: 0,
+      UNLIMITED: 0
+    };
+
+    // 할당량 사용 통계
+    let totalUsage = 0;
+    let totalLimit = 0;
+    let nearLimitUsers = 0;
+    let exceededUsers = 0;
+
+    // 체험 상태
+    let activeTrials = 0;
+    let expiringIn7Days = 0;
+    let expiredTrials = 0;
+
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+    users.forEach(user => {
+      const tier = user.subscriptionTier || 'UNLIMITED';
+      tierDistribution[tier]++;
+
+      // 할당량 통계
+      if (user.messageQuota && tier !== 'UNLIMITED') {
+        const usage = user.messageQuota.currentMonthUsage || 0;
+        const limit = user.messageQuota.monthlyLimit || 0;
+
+        totalUsage += usage;
+        totalLimit += limit;
+
+        const usagePercent = limit > 0 ? (usage / limit) * 100 : 0;
+
+        if (usagePercent >= 90) nearLimitUsers++;
+        if (usage >= limit) exceededUsers++;
+      }
+
+      // 체험 통계 (TRIAL 티어만)
+      if (tier === 'TRIAL' && user.trialPeriod) {
+        const endDate = new Date(user.trialPeriod.endDate);
+
+        if (endDate > now) {
+          activeTrials++;
+          if (endDate <= sevenDaysFromNow) {
+            expiringIn7Days++;
+          }
+        } else {
+          expiredTrials++;
+        }
+      }
+    });
+
+    const averageUsage = totalLimit > 0 ? (totalUsage / totalLimit) * 100 : 0;
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        tierDistribution,
+        quotaUsage: {
+          averageUsage: Math.round(averageUsage * 10) / 10,
+          nearLimitUsers,
+          exceededUsers,
+          totalUsage,
+          totalLimit
+        },
+        trialStatus: {
+          activeTrials,
+          expiringIn7Days,
+          expired: expiredTrials
+        },
+        totalUsers: users.length,
+        timestamp: new Date().toISOString()
+      })
+    };
+  } catch (error) {
+    console.error('Get subscription stats error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+    };
+  }
+}
+
+// 조직 목록 조회
+async function getOrganizationList(event, headers) {
+  try {
+    const adminUserId = event.queryStringParameters?.adminUserId;
+
+    console.log('Getting organization list, adminUserId:', adminUserId);
+
+    // 관리자 권한 확인
+    const adminUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: adminUserId }
+    }));
+
+    if (!adminUser.Item || adminUser.Item.role !== 'ADMIN') {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: 'FORBIDDEN', message: 'Admin access required' })
+      };
+    }
+
+    // 모든 사용자 조회
+    const usersResponse = await dynamoClient.send(new ScanCommand({
+      TableName: USERS_TABLE
+    }));
+
+    const users = usersResponse.Items || [];
+
+    // 조직별 사용자 집계
+    const organizationMap = new Map();
+
+    users.forEach(user => {
+      const org = user.organization || '(미지정)';
+
+      if (!organizationMap.has(org)) {
+        organizationMap.set(org, {
+          name: org,
+          userCount: 0,
+          tierDistribution: { FREE: 0, TRIAL: 0, PREMIUM: 0, UNLIMITED: 0 }
+        });
+      }
+
+      const orgData = organizationMap.get(org);
+      orgData.userCount++;
+
+      const tier = user.subscriptionTier || 'UNLIMITED';
+      orgData.tierDistribution[tier]++;
+    });
+
+    // Map을 배열로 변환하고 사용자 수로 정렬
+    const organizations = Array.from(organizationMap.values())
+      .sort((a, b) => b.userCount - a.userCount);
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        organizations,
+        totalOrganizations: organizations.length,
+        timestamp: new Date().toISOString()
+      })
+    };
+  } catch (error) {
+    console.error('Get organization list error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
+    };
+  }
+}
+
+// 그룹(조직)별 티어 일괄 변경
+async function updateGroupTier(event, headers) {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { adminUserId, organization, newTier } = body;
+
+    console.log('Updating group tier:', { adminUserId, organization, newTier });
+
+    // 관리자 권한 확인
+    const adminUser = await dynamoClient.send(new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId: adminUserId }
+    }));
+
+    if (!adminUser.Item || adminUser.Item.role !== 'ADMIN') {
+      return {
+        statusCode: 403,
+        headers,
+        body: JSON.stringify({ error: 'FORBIDDEN', message: 'Admin access required' })
+      };
+    }
+
+    // 유효한 티어인지 확인
+    const validTiers = ['FREE', 'TRIAL', 'PREMIUM', 'UNLIMITED'];
+    if (!validTiers.includes(newTier)) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'VALIDATION_ERROR', message: `Invalid tier: ${newTier}` })
+      };
+    }
+
+    // 해당 조직의 모든 사용자 조회
+    const usersResponse = await dynamoClient.send(new ScanCommand({
+      TableName: USERS_TABLE,
+      FilterExpression: 'organization = :org',
+      ExpressionAttributeValues: {
+        ':org': organization
+      }
+    }));
+
+    const users = usersResponse.Items || [];
+
+    if (users.length === 0) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({
+          error: 'NOT_FOUND',
+          message: `No users found in organization: ${organization}`
+        })
+      };
+    }
+
+    // 티어별 할당량 설정
+    const tierLimits = {
+      'FREE': 50,
+      'TRIAL': 1000,
+      'PREMIUM': 1500,
+      'UNLIMITED': -1
+    };
+
+    const today = new Date().toISOString().split('T')[0];
+    const nextMonth = new Date(today);
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const firstDayNextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1)
+      .toISOString().split('T')[0];
+
+    // 각 사용자의 티어 업데이트
+    const updatePromises = users.map(async (user) => {
+      const oldTier = user.subscriptionTier || 'UNLIMITED';
+
+      // 이미 같은 티어면 스킵
+      if (oldTier === newTier) {
+        return { userId: user.userId, skipped: true, reason: 'Same tier' };
+      }
+
+      // 구독 티어 업데이트
+      const updateExpression = [
+        'subscriptionTier = :tier',
+        'messageQuota = :quota',
+        'subscriptionMetadata = :metadata'
+      ];
+
+      const expressionValues = {
+        ':tier': newTier,
+        ':quota': {
+          monthlyLimit: tierLimits[newTier],
+          currentMonthUsage: user.messageQuota?.currentMonthUsage || 0,
+          lastResetDate: today,
+          nextResetDate: firstDayNextMonth
+        },
+        ':metadata': {
+          upgradedAt: new Date().toISOString(),
+          upgradedFrom: oldTier,
+          autoRenew: true,
+          billingCycle: newTier === 'UNLIMITED' || newTier === 'PREMIUM' ? 'lifetime' : 'monthly'
+        }
+      };
+
+      // TRIAL 티어인 경우 체험 기간 설정
+      if (newTier === 'TRIAL') {
+        const trialEnd = new Date();
+        trialEnd.setDate(trialEnd.getDate() + 30);
+
+        updateExpression.push('trialPeriod = :trialPeriod');
+        expressionValues[':trialPeriod'] = {
+          startDate: new Date().toISOString(),
+          endDate: trialEnd.toISOString(),
+          isExpired: false,
+          daysRemaining: 30
+        };
+      } else {
+        // TRIAL이 아니면 체험 기간 제거
+        updateExpression.push('trialPeriod = :null');
+        expressionValues[':null'] = null;
+      }
+
+      await dynamoClient.send(new UpdateCommand({
+        TableName: USERS_TABLE,
+        Key: { userId: user.userId },
+        UpdateExpression: `SET ${updateExpression.join(', ')}`,
+        ExpressionAttributeValues: expressionValues
+      }));
+
+      return { userId: user.userId, oldTier, newTier, updated: true };
+    });
+
+    const results = await Promise.all(updatePromises);
+
+    const updatedCount = results.filter(r => r.updated).length;
+    const skippedCount = results.filter(r => r.skipped).length;
+
+    console.log('Group tier update completed:', {
+      organization,
+      newTier,
+      updatedCount,
+      skippedCount
+    });
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        success: true,
+        message: `Organization "${organization}" users updated to ${newTier}`,
+        organization,
+        newTier,
+        totalUsers: users.length,
+        updatedCount,
+        skippedCount,
+        results
+      })
+    };
+  } catch (error) {
+    console.error('Update group tier error:', error);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ error: 'SERVER_ERROR', message: error.message })
     };
   }
 }

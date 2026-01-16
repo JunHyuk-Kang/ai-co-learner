@@ -12,6 +12,13 @@ const DailyQuests: React.FC = () => {
 
   useEffect(() => {
     loadQuests();
+
+    // 30초마다 자동 새로고침 (진행도 업데이트 확인)
+    const interval = setInterval(() => {
+      loadQuests();
+    }, 30000); // 30초
+
+    return () => clearInterval(interval);
   }, [user]);
 
   const loadQuests = async () => {
@@ -276,8 +283,8 @@ const DailyQuests: React.FC = () => {
         {/* 하단 안내 */}
         <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-4">
           <p className="text-blue-800 text-sm">
-            💡 <strong>팁:</strong> AI 봇과 대화하면서 퀘스트가 자동으로 진행됩니다. 5분마다
-            진행도가 업데이트되니 조금만 기다려주세요!
+            💡 <strong>팁:</strong> AI 봇과 대화하면서 퀘스트가 자동으로 진행됩니다. 진행도는
+            30초마다 자동으로 업데이트됩니다! (백엔드는 5분마다 분석)
           </p>
         </div>
       </div>

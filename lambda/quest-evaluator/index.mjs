@@ -1,5 +1,5 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { DynamoDBDocumentClient, QueryCommand, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 
 const client = new DynamoDBClient({ region: 'ap-northeast-2' });
 const docClient = DynamoDBDocumentClient.from(client);
@@ -25,12 +25,20 @@ async function evaluateQuestProgress(userId, questDate) {
     const quests = questData.quests || [];
 
     // 오늘 분석된 메시지 조회 (learning-analytics에서)
+    // timestamp는 숫자 타입이므로, 오늘 날짜의 시작/종료 밀리초 계산
+    const todayStart = new Date(questDate).getTime();
+    const todayEnd = todayStart + (24 * 60 * 60 * 1000); // 하루 = 86,400,000ms
+
     const analyticsResponse = await docClient.send(new QueryCommand({
       TableName: 'ai-co-learner-learning-analytics',
-      KeyConditionExpression: 'userId = :userId AND begins_with(timestamp, :date)',
+      KeyConditionExpression: 'userId = :userId AND #ts BETWEEN :start AND :end',
+      ExpressionAttributeNames: {
+        '#ts': 'timestamp'
+      },
       ExpressionAttributeValues: {
         ':userId': userId,
-        ':date': questDate
+        ':start': todayStart,
+        ':end': todayEnd
       }
     }));
 
@@ -38,37 +46,55 @@ async function evaluateQuestProgress(userId, questDate) {
 
     // 각 퀘스트 진행도 업데이트
     const updatedQuests = quests.map(quest => {
-      // 타겟 역량에 맞는 메시지 필터링
+      // 모든 오늘의 메시지를 카운트 (0점도 포함)
+      // 타겟 역량 점수만 따로 계산
       const relevantMessages = todayAnalytics.filter(msg => {
-        const scores = msg.competencyScores || {};
+        const scores = msg.competencyScores || msg.analysisResult || {};
+        // 역량 점수가 존재하는 메시지만 (undefined 제외)
         return scores[quest.targetCompetency] !== undefined;
       });
 
-      // 진행도 계산
+      // 진행도 계산: 모든 메시지 카운트
       const messageCount = relevantMessages.length;
+
+      // 평균 점수 계산: 타겟 역량 점수만 사용
       const avgScore = relevantMessages.length > 0
-        ? relevantMessages.reduce((sum, msg) =>
-            sum + (msg.competencyScores[quest.targetCompetency] || 0), 0
-          ) / relevantMessages.length
+        ? relevantMessages.reduce((sum, msg) => {
+            const scores = msg.competencyScores || msg.analysisResult || {};
+            return sum + (scores[quest.targetCompetency] || 0);
+          }, 0) / relevantMessages.length
         : 0;
 
       // 완료 조건 체크
       const criteria = quest.completionCriteria;
+
+      // 메시지 개수가 충분하고, 평균 점수가 기준 이상이면 완료
+      // 단, 메시지 개수가 기준의 2배 이상이면 점수 기준을 50%로 완화
+      const relaxedScoreThreshold = messageCount >= criteria.messageCount * 2
+        ? criteria.minScore * 0.5
+        : criteria.minScore;
+
       const isCompleted =
         messageCount >= criteria.messageCount &&
-        avgScore >= criteria.minScore;
+        avgScore >= relaxedScoreThreshold;
 
-      return {
+      const updatedQuest = {
         ...quest,
         progress: {
           currentMessages: messageCount,
           currentScore: Math.round(avgScore)
         },
-        status: isCompleted ? 'completed' : quest.status,
-        completedAt: isCompleted && quest.status !== 'completed'
-          ? new Date().toISOString()
-          : quest.completedAt
+        status: isCompleted ? 'completed' : quest.status
       };
+
+      // completedAt은 완료 시에만 추가 (undefined 방지)
+      if (isCompleted && quest.status !== 'completed') {
+        updatedQuest.completedAt = new Date().toISOString();
+      } else if (quest.completedAt) {
+        updatedQuest.completedAt = quest.completedAt;
+      }
+
+      return updatedQuest;
     });
 
     // 퀘스트 업데이트
@@ -207,26 +233,31 @@ export const handler = async (event) => {
     // 모든 활성 사용자의 퀘스트 평가
     const today = new Date().toISOString().split('T')[0];
 
-    // 오늘 퀘스트가 있는 모든 사용자 조회
-    const questsResponse = await docClient.send(new QueryCommand({
-      TableName: 'ai-co-learner-daily-quests',
-      IndexName: 'questDate-index', // GSI 필요
-      KeyConditionExpression: 'questDate = :date',
-      ExpressionAttributeValues: {
-        ':date': today
-      }
-    }));
-
-    // GSI가 없을 수 있으므로 Scan으로 대체
-    const allQuestsResponse = await docClient.send(new ScanCommand({
-      TableName: 'ai-co-learner-daily-quests',
-      FilterExpression: 'questDate = :date',
-      ExpressionAttributeValues: {
-        ':date': today
-      }
-    }));
-
-    const todayQuests = allQuestsResponse.Items || [];
+    // 오늘 퀘스트가 있는 모든 사용자 조회 (Scan 사용)
+    let todayQuests = [];
+    try {
+      // GSI를 사용하려고 시도
+      const questsResponse = await docClient.send(new QueryCommand({
+        TableName: 'ai-co-learner-daily-quests',
+        IndexName: 'questDate-index',
+        KeyConditionExpression: 'questDate = :date',
+        ExpressionAttributeValues: {
+          ':date': today
+        }
+      }));
+      todayQuests = questsResponse.Items || [];
+    } catch (gsiError) {
+      // GSI가 없으면 Scan으로 대체
+      console.log('GSI not found, using Scan instead');
+      const allQuestsResponse = await docClient.send(new ScanCommand({
+        TableName: 'ai-co-learner-daily-quests',
+        FilterExpression: 'questDate = :date',
+        ExpressionAttributeValues: {
+          ':date': today
+        }
+      }));
+      todayQuests = allQuestsResponse.Items || [];
+    }
 
     console.log(`Evaluating quests for ${todayQuests.length} users`);
 

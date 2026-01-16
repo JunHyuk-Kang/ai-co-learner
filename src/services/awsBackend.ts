@@ -498,6 +498,16 @@ export const AdminService = {
       throw error;
     }
   },
+
+  getUserCompetencies: async (userId: string) => {
+    try {
+      const data = await apiGet<any>(`/users/${userId}/competencies`);
+      return data;
+    } catch (error) {
+      logger.error('Failed to get user competencies:', error);
+      return null;
+    }
+  },
 };
 
 export interface AssessmentOption {
@@ -794,6 +804,172 @@ export const LearningAnalysisService = {
       return data;
     } catch (error) {
       logger.error('Failed to get learning analysis:', error);
+      return null;
+    }
+  },
+};
+
+// Subscription Service Interfaces
+export interface SubscriptionStats {
+  tierDistribution: {
+    FREE: number;
+    TRIAL: number;
+    PREMIUM: number;
+    UNLIMITED: number;
+  };
+  quotaUsage: {
+    averageUsage: number;
+    nearLimitUsers: number;
+    exceededUsers: number;
+    totalUsage: number;
+    totalLimit: number;
+  };
+  trialStatus: {
+    activeTrials: number;
+    expiringIn7Days: number;
+    expired: number;
+  };
+  totalUsers: number;
+  timestamp: string;
+}
+
+export interface UpdateTierRequest {
+  adminUserId: string;
+  targetUserId: string;
+  newTier: 'FREE' | 'TRIAL' | 'PREMIUM' | 'UNLIMITED';
+}
+
+export interface ResetQuotaRequest {
+  adminUserId: string;
+  targetUserId: string;
+}
+
+export interface ExtendTrialRequest {
+  adminUserId: string;
+  targetUserId: string;
+  additionalDays: number;
+}
+
+// Organization/Group types
+export interface OrganizationInfo {
+  name: string;
+  userCount: number;
+  tierDistribution: {
+    FREE: number;
+    TRIAL: number;
+    PREMIUM: number;
+    UNLIMITED: number;
+  };
+}
+
+export interface OrganizationListResponse {
+  organizations: OrganizationInfo[];
+  totalOrganizations: number;
+  timestamp: string;
+}
+
+export interface UpdateGroupTierRequest {
+  adminUserId: string;
+  organization: string;
+  newTier: 'FREE' | 'TRIAL' | 'PREMIUM' | 'UNLIMITED';
+}
+
+export interface UpdateGroupTierResponse {
+  success: boolean;
+  message: string;
+  organization: string;
+  newTier: string;
+  totalUsers: number;
+  updatedCount: number;
+  skippedCount: number;
+}
+
+// Subscription Management Service
+export const SubscriptionService = {
+  // Admin: 사용자 티어 변경
+  updateUserTier: async (request: UpdateTierRequest): Promise<any> => {
+    try {
+      const data = await apiPost('/admin/subscription/update-tier', request);
+      logger.info('User tier updated:', data);
+      return data;
+    } catch (error) {
+      logger.error('Failed to update user tier:', error);
+      throw error;
+    }
+  },
+
+  // Admin: 할당량 리셋
+  resetUserQuota: async (request: ResetQuotaRequest): Promise<any> => {
+    try {
+      const data = await apiPost('/admin/subscription/reset-quota', request);
+      logger.info('User quota reset:', data);
+      return data;
+    } catch (error) {
+      logger.error('Failed to reset user quota:', error);
+      throw error;
+    }
+  },
+
+  // Admin: 체험 기간 연장
+  extendTrialPeriod: async (request: ExtendTrialRequest): Promise<any> => {
+    try {
+      const data = await apiPost('/admin/subscription/extend-trial', request);
+      logger.info('Trial period extended:', data);
+      return data;
+    } catch (error) {
+      logger.error('Failed to extend trial period:', error);
+      throw error;
+    }
+  },
+
+  // Admin: 구독 통계 조회
+  getSubscriptionStats: async (adminUserId: string): Promise<SubscriptionStats | null> => {
+    try {
+      const data = await apiGet<SubscriptionStats>(
+        `/admin/subscription/stats?adminUserId=${adminUserId}`
+      );
+      return data;
+    } catch (error) {
+      logger.error('Failed to get subscription stats:', error);
+      return null;
+    }
+  },
+
+  // Admin: 조직 목록 조회
+  getOrganizations: async (adminUserId: string): Promise<OrganizationListResponse | null> => {
+    try {
+      const data = await apiGet<OrganizationListResponse>(
+        `/admin/subscription/organizations?adminUserId=${adminUserId}`
+      );
+      return data;
+    } catch (error) {
+      logger.error('Failed to get organizations:', error);
+      return null;
+    }
+  },
+
+  // Admin: 그룹별 티어 일괄 변경
+  updateGroupTier: async (request: UpdateGroupTierRequest): Promise<UpdateGroupTierResponse> => {
+    try {
+      const data = await apiPost<UpdateGroupTierResponse>(
+        '/admin/subscription/update-group-tier',
+        request
+      );
+      logger.info('Group tier updated:', data);
+      return data;
+    } catch (error) {
+      logger.error('Failed to update group tier:', error);
+      throw error;
+    }
+  },
+
+  // User: 본인 구독 정보 조회
+  getUserSubscription: async (userId: string): Promise<any> => {
+    try {
+      const data = await apiGet(`/users/${userId}/subscription`);
+      return data;
+    } catch (error) {
+      logger.error('Failed to get user subscription:', error);
       return null;
     }
   },

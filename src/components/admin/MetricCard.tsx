@@ -6,7 +6,7 @@ interface MetricCardProps {
   title: string;
   value: string | number;
   icon: LucideIcon;
-  color: 'blue' | 'green' | 'purple' | 'orange' | 'teal' | 'red';
+  color: 'blue' | 'green' | 'purple' | 'orange' | 'teal' | 'red' | 'gray' | 'amber';
   change?: string;
   subtext?: string;
   alert?: boolean;
@@ -42,6 +42,16 @@ const colorClasses = {
     gradient: 'from-red-900/20 to-red-800/10',
     border: 'border-red-700/50',
     icon: 'bg-red-500/20 text-red-400',
+  },
+  gray: {
+    gradient: 'from-gray-900/20 to-gray-800/10',
+    border: 'border-gray-700/50',
+    icon: 'bg-gray-500/20 text-gray-400',
+  },
+  amber: {
+    gradient: 'from-amber-900/20 to-amber-800/10',
+    border: 'border-amber-700/50',
+    icon: 'bg-amber-500/20 text-amber-400',
   },
 };
 

@@ -71,6 +71,36 @@
   - 트러블슈팅
 - **대상 독자**: 백엔드 개발자, DevOps, 솔루션 아키텍트
 
+### [Lambda Layer 가이드](lambda-layer-guide.md)
+- **용도**: Lambda Layer를 통한 공통 의존성 관리
+- **주요 내용**:
+  - Lambda Layer 구조 및 개념
+  - 공통 의존성 분리 전략
+  - Layer 생성 및 배포 방법
+  - 각 Lambda 함수에 Layer 적용
+  - 버전 관리 및 업데이트
+- **대상 독자**: 백엔드 개발자, DevOps
+
+### [Lambda 테스팅 가이드](lambda-testing-guide.md)
+- **용도**: Lambda 함수 테스트 전략 및 실행 방법
+- **주요 내용**:
+  - 로컬 테스트 환경 구축
+  - 단위 테스트 및 통합 테스트
+  - AWS Console을 통한 테스트
+  - API Gateway 테스트
+  - 자동화된 테스트 파이프라인
+- **대상 독자**: 백엔드 개발자, QA
+
+### [CloudWatch 모니터링 가이드](cloudwatch-monitoring-guide.md)
+- **용도**: Lambda 함수 및 시스템 모니터링
+- **주요 내용**:
+  - CloudWatch Logs 활용
+  - 메트릭 모니터링 및 알람 설정
+  - 로그 쿼리 및 분석
+  - 성능 최적화 팁
+  - 비용 모니터링
+- **대상 독자**: 백엔드 개발자, DevOps, SRE
+
 ---
 
 ## 🎯 보조 문서
@@ -83,6 +113,25 @@
   - 8개의 개방형 질문 (역량 진단용)
   - 각 질문별 평가 루브릭
   - AI 분석 기준 및 채점 로직
+
+### [관리자 설정 가이드](admin-setup-guide.md)
+- **용도**: 관리자 권한 관리 및 설정
+- **주요 내용**:
+  - 관리자 역할 변경 (ADMIN, SUPER_USER, USER)
+  - CLI 스크립트를 통한 역할 관리
+  - DynamoDB 직접 수정 방법
+  - 관리자 목록 조회 및 통계
+- **대상 독자**: 시스템 관리자, DevOps
+
+### [관리자 대시보드 가이드](admin-dashboard-guide.md)
+- **용도**: 실시간 모니터링 대시보드 사용법
+- **주요 내용**:
+  - 5개 핵심 메트릭 카드
+  - 시간대별 활동 차트
+  - 인기 봇 Top 3 순위
+  - 이탈 위험 사용자 감지
+  - API 엔드포인트 및 데이터 구조
+- **대상 독자**: 관리자, 교육 운영자
 
 ### [관리자 봇 추천 가이드](admin-bot-recommendation-guide.md)
 - **용도**: 관리자 패널의 봇 추천 시스템 운영
@@ -120,14 +169,24 @@
 
 ### 아카이브 문서 목록
 
+**인프라 설정 기록**
 - **[API_GATEWAY_SETUP.md](archive/API_GATEWAY_SETUP.md)** - API Gateway 초기 설정 기록
 - **[AWS_PROGRESS.md](archive/AWS_PROGRESS.md)** - AWS 구축 진행 상황 기록
 - **[AWS_SERVERLESS_CHECKLIST.md](archive/AWS_SERVERLESS_CHECKLIST.md)** - 서버리스 인프라 체크리스트
+
+**기능 구현 문서**
 - **[ai-analysis-implementation.md](archive/ai-analysis-implementation.md)** - AI 분석 기능 구현 문서
 - **[data-strategy.md](archive/data-strategy.md)** - 데이터 전략 및 설계
+
+**개발 계획 문서 (구 버전)**
 - **[development-plan.md](archive/development-plan.md)** - 이전 개발 계획
 - **[serverless_architecture_design.md](archive/serverless_architecture_design.md)** - 서버리스 아키텍처 설계 초안
 - **[total_development-plan.md](archive/total_development-plan.md)** - 종합 개발 계획 (구 버전)
+
+**작업 완료 보고서**
+- **[BUGFIX_COMPETENCY_HISTORY.md](archive/BUGFIX_COMPETENCY_HISTORY.md)** - 역량 성장 추이 버그 수정 (2025-12-31)
+- **[SPRINT5_SUMMARY.md](archive/SPRINT5_SUMMARY.md)** - Sprint 5 작업 완료 보고서 (Lambda Layer 공통화)
+- **[knowledgebase-improvement-proposal.md](archive/knowledgebase-improvement-proposal.md)** - KnowledgeBase 개선 제안서 (Phase 8-9로 연기)
 
 ### 아카이브 사용 시기
 - 프로젝트 역사 이해 필요시
@@ -177,5 +236,5 @@
 
 ---
 
-**마지막 업데이트**: 2025-12-31
+**마지막 업데이트**: 2026-01-15
 **문서 관리자**: AI Co-Learner 개발 팀
