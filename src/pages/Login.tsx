@@ -42,8 +42,8 @@ export const Login: React.FC = () => {
         }
       }
       // user 상태가 업데이트되면 useEffect가 자동으로 리다이렉트
-    } catch (error: any) {
-      setError(error.message || '오류가 발생했습니다.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '오류가 발생했습니다.');
     }
   };
 
@@ -57,8 +57,8 @@ export const Login: React.FC = () => {
       setNeedsConfirmation(false);
       setIsLogin(true);
       setConfirmationCode('');
-    } catch (error: any) {
-      setError(error.message || '인증 코드 확인 중 오류가 발생했습니다.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '인증 코드 확인 중 오류가 발생했습니다.');
     }
   };
 
@@ -97,7 +97,7 @@ export const Login: React.FC = () => {
               label="인증 코드"
               placeholder="6자리 인증 코드를 입력하세요"
               value={confirmationCode}
-              onChange={(e) => setConfirmationCode(e.target.value)}
+              onChange={e => setConfirmationCode(e.target.value)}
               required
             />
 
@@ -123,7 +123,7 @@ export const Login: React.FC = () => {
               label="아이디"
               placeholder="아이디를 입력하세요"
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              onChange={e => setUsername(e.target.value)}
               required
             />
 
@@ -132,7 +132,7 @@ export const Login: React.FC = () => {
               type="password"
               placeholder="비밀번호를 입력하세요"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={e => setPassword(e.target.value)}
               required
             />
 
@@ -153,7 +153,7 @@ export const Login: React.FC = () => {
                   label="이름"
                   placeholder="이름을 입력하세요"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={e => setName(e.target.value)}
                   required
                 />
 
@@ -161,7 +161,7 @@ export const Login: React.FC = () => {
                   label="소속"
                   placeholder="소속을 입력하세요 (예: ABC 회사, XYZ 대학교)"
                   value={organization}
-                  onChange={(e) => setOrganization(e.target.value)}
+                  onChange={e => setOrganization(e.target.value)}
                   required
                 />
               </>

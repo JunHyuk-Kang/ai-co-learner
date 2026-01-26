@@ -1926,7 +1926,6 @@ export const AdminPanel: React.FC = () => {
                         });
 
                         // 페이지네이션
-                        const totalPages = Math.ceil(filteredUsers.length / USERS_PER_PAGE);
                         const startIdx = (subCurrentPage - 1) * USERS_PER_PAGE;
                         const paginatedUsers = filteredUsers.slice(
                           startIdx,

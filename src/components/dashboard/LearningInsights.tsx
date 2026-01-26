@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LearningAnalysisService, LearningAnalysis, Insight } from '../../services/awsBackend';
+import { LearningAnalysisService, LearningAnalysis } from '../../services/awsBackend';
 import { TrendingUp, TrendingDown, AlertCircle, Award, Zap, Lightbulb } from 'lucide-react';
 import { logger } from '../../utils/logger';
 

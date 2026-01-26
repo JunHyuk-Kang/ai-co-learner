@@ -1,5 +1,5 @@
 import { fetchAuthSession } from 'aws-amplify/auth';
-import { User, ChatSession, Message } from '../types';
+import { User, ChatSession, Message, BotTemplate, UserBotWithDetails } from '../types';
 import { apiGet, apiPost } from './apiUtils';
 import { logger } from '../utils/logger';
 
@@ -20,7 +20,7 @@ export interface UserCompetencies {
 export const UserService = {
   getUserProfile: async (userId: string): Promise<User | null> => {
     try {
-      const data: any = await apiGet(`/users/${userId}`);
+      const data = await apiGet<Record<string, unknown>>(`/users/${userId}`);
 
       // Convert userId to id for frontend User type
       if (data && data.userId) {
@@ -44,7 +44,7 @@ export const UserService = {
     organization?: string
   ): Promise<User> => {
     try {
-      const data: any = await apiPost('/users', {
+      const data = await apiPost<Record<string, unknown>>('/users', {
         userId,
         username,
         name,
@@ -71,7 +71,7 @@ export const UserService = {
 
   updateUserProfile: async (userId: string, name: string, organization?: string): Promise<User> => {
     try {
-      const data: any = await apiPost('/users/update', {
+      const data = await apiPost<Record<string, unknown>>('/users/update', {
         userId,
         name,
         organization,
@@ -119,13 +119,13 @@ export const ChatService = {
       const session = await fetchAuthSession();
       const userId = session.userSub;
 
-      const data: any = await apiPost('/chat', {
+      const data = await apiPost<{ aiMessage: Message }>('/chat', {
         userId,
         sessionId: botId,
         message: userText,
       });
 
-      return data.aiMessage as Message;
+      return data.aiMessage;
     } catch (error) {
       logger.error('Failed to send message:', error);
       throw error;
@@ -179,7 +179,7 @@ export const ChatService = {
               errorData.error ||
                 'AI 서비스 일일 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.'
             );
-          } catch (e) {
+          } catch {
             throw new Error('AI 서비스 일일 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.');
           }
         }
@@ -223,8 +223,8 @@ export const ChatService = {
           }
         }
       }
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
         logger.info('Stream aborted by user');
         return;
       }
@@ -235,9 +235,9 @@ export const ChatService = {
 };
 
 export const BotService = {
-  getTemplates: async () => {
+  getTemplates: async (): Promise<BotTemplate[]> => {
     try {
-      const data = await apiGet<any>('/bots/templates');
+      const data = await apiGet<BotTemplate[]>('/bots/templates');
       return data;
     } catch (error) {
       logger.error('Failed to get templates:', error);
@@ -245,9 +245,9 @@ export const BotService = {
     }
   },
 
-  getUserBots: async (userId: string) => {
+  getUserBots: async (userId: string): Promise<UserBotWithDetails[]> => {
     try {
-      const data = await apiGet<any>(`/bots/user/${userId}`);
+      const data = await apiGet<UserBotWithDetails[]>(`/bots/user/${userId}`);
       return data;
     } catch (error) {
       logger.error('Failed to get user bots:', error);
@@ -255,9 +255,13 @@ export const BotService = {
     }
   },
 
-  createUserBot: async (userId: string, templateId: string, name: string) => {
+  createUserBot: async (
+    userId: string,
+    templateId: string,
+    name: string
+  ): Promise<UserBotWithDetails> => {
     try {
-      const data = await apiPost<any>('/bots/create', {
+      const data = await apiPost<UserBotWithDetails>('/bots/create', {
         userId,
         templateId,
         name,
@@ -269,9 +273,12 @@ export const BotService = {
     }
   },
 
-  createTemplate: async (userId: string, templateData: any) => {
+  createTemplate: async (
+    userId: string,
+    templateData: Partial<BotTemplate>
+  ): Promise<BotTemplate> => {
     try {
-      const data = await apiPost<any>('/admin/templates/create', {
+      const data = await apiPost<BotTemplate>('/admin/templates/create', {
         userId,
         ...templateData,
       });
@@ -282,9 +289,13 @@ export const BotService = {
     }
   },
 
-  updateTemplate: async (userId: string, templateId: string, templateData: any) => {
+  updateTemplate: async (
+    userId: string,
+    templateId: string,
+    templateData: Partial<BotTemplate>
+  ): Promise<BotTemplate> => {
     try {
-      const data = await apiPost<any>('/admin/templates/update', {
+      const data = await apiPost<BotTemplate>('/admin/templates/update', {
         userId,
         templateId,
         ...templateData,
@@ -296,9 +307,9 @@ export const BotService = {
     }
   },
 
-  deleteTemplate: async (userId: string, templateId: string) => {
+  deleteTemplate: async (userId: string, templateId: string): Promise<{ success: boolean }> => {
     try {
-      const data = await apiPost<any>('/admin/templates/delete', {
+      const data = await apiPost<{ success: boolean }>('/admin/templates/delete', {
         userId,
         templateId,
       });
@@ -309,9 +320,9 @@ export const BotService = {
     }
   },
 
-  deleteUserBot: async (userId: string, botId: string) => {
+  deleteUserBot: async (userId: string, botId: string): Promise<{ success: boolean }> => {
     try {
-      const data = await apiPost<any>('/bots/delete', {
+      const data = await apiPost<{ success: boolean }>('/bots/delete', {
         userId,
         botId,
       });
@@ -322,9 +333,9 @@ export const BotService = {
     }
   },
 
-  getRecommendedTemplates: async (userId: string) => {
+  getRecommendedTemplates: async (userId: string): Promise<BotTemplate[]> => {
     try {
-      const data = await apiGet<any>(`/bots/recommended/${userId}`);
+      const data = await apiGet<BotTemplate[]>(`/bots/recommended/${userId}`);
       return data;
     } catch (error) {
       logger.error('Failed to get recommended templates:', error);
@@ -405,9 +416,9 @@ export interface DashboardStatsResponse {
 }
 
 export const AdminService = {
-  getAllUsers: async (adminUserId: string) => {
+  getAllUsers: async (adminUserId: string): Promise<User[]> => {
     try {
-      const data = await apiGet<any>(`/admin/users?userId=${adminUserId}`);
+      const data = await apiGet<User[]>(`/admin/users?userId=${adminUserId}`);
       return data;
     } catch (error) {
       logger.error('Failed to get all users:', error);
@@ -415,9 +426,13 @@ export const AdminService = {
     }
   },
 
-  updateUserRole: async (adminUserId: string, userId: string, role: string) => {
+  updateUserRole: async (
+    adminUserId: string,
+    userId: string,
+    role: string
+  ): Promise<{ success: boolean }> => {
     try {
-      const data = await apiPost<any>('/admin/users/update-role', {
+      const data = await apiPost<{ success: boolean }>('/admin/users/update-role', {
         adminUserId,
         userId,
         role,
@@ -429,9 +444,9 @@ export const AdminService = {
     }
   },
 
-  blockUser: async (userId: string, blocked: boolean) => {
+  blockUser: async (userId: string, blocked: boolean): Promise<{ success: boolean }> => {
     try {
-      const data = await apiPost<any>('/admin/users/block', {
+      const data = await apiPost<{ success: boolean }>('/admin/users/block', {
         userId,
         blocked,
       });
@@ -447,9 +462,9 @@ export const AdminService = {
     name: string,
     organization?: string,
     password?: string
-  ) => {
+  ): Promise<{ success: boolean }> => {
     try {
-      const data = await apiPost<any>('/admin/users/update-info', {
+      const data = await apiPost<{ success: boolean }>('/admin/users/update-info', {
         userId,
         name,
         organization,
@@ -499,9 +514,9 @@ export const AdminService = {
     }
   },
 
-  getUserCompetencies: async (userId: string) => {
+  getUserCompetencies: async (userId: string): Promise<UserCompetencies | null> => {
     try {
-      const data = await apiGet<any>(`/users/${userId}/competencies`);
+      const data = await apiGet<UserCompetencies>(`/users/${userId}/competencies`);
       return data;
     } catch (error) {
       logger.error('Failed to get user competencies:', error);
@@ -887,9 +902,14 @@ export interface UpdateGroupTierResponse {
 // Subscription Management Service
 export const SubscriptionService = {
   // Admin: 사용자 티어 변경
-  updateUserTier: async (request: UpdateTierRequest): Promise<any> => {
+  updateUserTier: async (
+    request: UpdateTierRequest
+  ): Promise<{ success: boolean; message: string }> => {
     try {
-      const data = await apiPost('/admin/subscription/update-tier', request);
+      const data = await apiPost<{ success: boolean; message: string }>(
+        '/admin/subscription/update-tier',
+        request
+      );
       logger.info('User tier updated:', data);
       return data;
     } catch (error) {
@@ -899,9 +919,14 @@ export const SubscriptionService = {
   },
 
   // Admin: 할당량 리셋
-  resetUserQuota: async (request: ResetQuotaRequest): Promise<any> => {
+  resetUserQuota: async (
+    request: ResetQuotaRequest
+  ): Promise<{ success: boolean; message: string }> => {
     try {
-      const data = await apiPost('/admin/subscription/reset-quota', request);
+      const data = await apiPost<{ success: boolean; message: string }>(
+        '/admin/subscription/reset-quota',
+        request
+      );
       logger.info('User quota reset:', data);
       return data;
     } catch (error) {
@@ -911,9 +936,14 @@ export const SubscriptionService = {
   },
 
   // Admin: 체험 기간 연장
-  extendTrialPeriod: async (request: ExtendTrialRequest): Promise<any> => {
+  extendTrialPeriod: async (
+    request: ExtendTrialRequest
+  ): Promise<{ success: boolean; message: string }> => {
     try {
-      const data = await apiPost('/admin/subscription/extend-trial', request);
+      const data = await apiPost<{ success: boolean; message: string }>(
+        '/admin/subscription/extend-trial',
+        request
+      );
       logger.info('Trial period extended:', data);
       return data;
     } catch (error) {
@@ -964,9 +994,9 @@ export const SubscriptionService = {
   },
 
   // User: 본인 구독 정보 조회
-  getUserSubscription: async (userId: string): Promise<any> => {
+  getUserSubscription: async (userId: string): Promise<Record<string, unknown> | null> => {
     try {
-      const data = await apiGet(`/users/${userId}/subscription`);
+      const data = await apiGet<Record<string, unknown>>(`/users/${userId}/subscription`);
       return data;
     } catch (error) {
       logger.error('Failed to get user subscription:', error);

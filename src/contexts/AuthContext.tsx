@@ -28,8 +28,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// 세션 만료 시간: 1시간 (밀리초)
-const SESSION_TIMEOUT = 60 * 60 * 1000;
 // 토큰 갱신 체크 간격: 5분 (밀리초)
 const TOKEN_CHECK_INTERVAL = 5 * 60 * 1000;
 
@@ -173,9 +171,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await new Promise(resolve => setTimeout(resolve, 500));
 
       await fetchCurrentUser();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Login error:', error);
-      throw new Error(error.message || '로그인 중 오류가 발생했습니다.');
+      throw new Error(error instanceof Error ? error.message : '로그인 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -226,9 +224,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(userProfile);
       return { needsConfirmation: false };
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Signup error:', error);
-      throw new Error(error.message || '회원가입 중 오류가 발생했습니다.');
+      throw new Error(error instanceof Error ? error.message : '회원가입 중 오류가 발생했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -239,9 +237,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // 인증 코드 확인
       await confirmSignUp({ username, confirmationCode: code });
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Confirmation error:', error);
-      throw new Error(error.message || '인증 코드 확인 중 오류가 발생했습니다.');
+      throw new Error(
+        error instanceof Error ? error.message : '인증 코드 확인 중 오류가 발생했습니다.'
+      );
     } finally {
       setIsLoading(false);
     }

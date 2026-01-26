@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 interface UseChatStreamProps {
   onChunk: (chunk: string) => void;
   onComplete: (fullMessage: string) => void;
-  onError: (error: any) => void;
+  onError: (error: Error) => void;
 }
 
 export const useChatStream = ({ onChunk, onComplete, onError }: UseChatStreamProps) => {
@@ -34,13 +34,16 @@ export const useChatStream = ({ onChunk, onComplete, onError }: UseChatStreamPro
         if (!abortControllerRef.current?.signal.aborted) {
           onComplete(fullMessageRef.current);
         }
-      } catch (error: any) {
-        if (error.name === 'AbortError' || abortControllerRef.current?.signal.aborted) {
+      } catch (error) {
+        if (
+          (error instanceof Error && error.name === 'AbortError') ||
+          abortControllerRef.current?.signal.aborted
+        ) {
           logger.info('Stream cancelled by user');
           return;
         }
         logger.error('Stream error:', error);
-        onError(error);
+        onError(error instanceof Error ? error : new Error(String(error)));
       } finally {
         setIsStreaming(false);
         abortControllerRef.current = null;

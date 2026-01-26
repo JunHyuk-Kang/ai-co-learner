@@ -1,0 +1,13 @@
+{
+    "Items": [
+        {
+            "primaryCompetencies": {
+                "L": [
+                    {
+                        "S": "creativity"
+                    }
+                ]
+            },
+            "systemPrompt": {
+                "S": 
+'cp949' codec can't encode character '\u274c' in position 419: illegal multibyte sequence

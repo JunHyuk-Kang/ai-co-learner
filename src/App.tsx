@@ -15,13 +15,25 @@ const queryClient = new QueryClient();
 
 // Lazy load page components
 const Login = lazy(() => import('./pages/Login').then(module => ({ default: module.Login })));
-const Dashboard = lazy(() => import('./pages/Dashboard').then(module => ({ default: module.Dashboard })));
-const ChatRoom = lazy(() => import('./pages/ChatRoom').then(module => ({ default: module.ChatRoom })));
-const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase').then(module => ({ default: module.KnowledgeBase })));
-const AdminPanel = lazy(() => import('./pages/AdminPanel').then(module => ({ default: module.AdminPanel })));
-const InitialAssessment = lazy(() => import('./pages/InitialAssessment').then(module => ({ default: module.InitialAssessment })));
+const Dashboard = lazy(() =>
+  import('./pages/Dashboard').then(module => ({ default: module.Dashboard }))
+);
+const ChatRoom = lazy(() =>
+  import('./pages/ChatRoom').then(module => ({ default: module.ChatRoom }))
+);
+const KnowledgeBase = lazy(() =>
+  import('./pages/KnowledgeBase').then(module => ({ default: module.KnowledgeBase }))
+);
+const AdminPanel = lazy(() =>
+  import('./pages/AdminPanel').then(module => ({ default: module.AdminPanel }))
+);
+const InitialAssessment = lazy(() =>
+  import('./pages/InitialAssessment').then(module => ({ default: module.InitialAssessment }))
+);
 const DailyQuests = lazy(() => import('./pages/DailyQuests'));
-const UserProfile = lazy(() => import('./pages/UserProfile').then(module => ({ default: module.UserProfile })));
+const UserProfile = lazy(() =>
+  import('./pages/UserProfile').then(module => ({ default: module.UserProfile }))
+);
 
 // Loading component
 const LoadingFallback = () => (
@@ -66,7 +78,8 @@ const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
 
-  if (!user || (user.role !== Role.ADMIN && user.role !== Role.SUPER_USER)) return <Navigate to="/" replace />;
+  if (!user || (user.role !== Role.ADMIN && user.role !== Role.SUPER_USER))
+    return <Navigate to="/" replace />;
   return <Layout>{children}</Layout>;
 };
 
@@ -76,63 +89,91 @@ const AppRoutes = () => {
     <Suspense fallback={<LoadingFallback />}>
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
-          <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
-
-          <Route path="/" element={
-            <ProtectedRoute>
+          <Route
+            path="/login"
+            element={
               <PageTransition>
-                <Dashboard />
+                <Login />
               </PageTransition>
-            </ProtectedRoute>
-          } />
+            }
+          />
 
-          <Route path="/chat/:agentId" element={
-            <ProtectedRoute>
-              <PageTransition>
-                <ChatRoom />
-              </PageTransition>
-            </ProtectedRoute>
-          } />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <Dashboard />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
 
-          <Route path="/knowledge-base" element={
-            <ProtectedRoute>
-              <PageTransition>
-                <KnowledgeBase />
-              </PageTransition>
-            </ProtectedRoute>
-          } />
+          <Route
+            path="/chat/:agentId"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <ChatRoom />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
 
-          <Route path="/assessment" element={
-            <ProtectedRoute>
-              <PageTransition>
-                <InitialAssessment />
-              </PageTransition>
-            </ProtectedRoute>
-          } />
+          <Route
+            path="/knowledge-base"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <KnowledgeBase />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
 
-          <Route path="/quests" element={
-            <ProtectedRoute>
-              <PageTransition>
-                <DailyQuests />
-              </PageTransition>
-            </ProtectedRoute>
-          } />
+          <Route
+            path="/assessment"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <InitialAssessment />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
 
-          <Route path="/profile" element={
-            <ProtectedRoute>
-              <PageTransition>
-                <UserProfile />
-              </PageTransition>
-            </ProtectedRoute>
-          } />
+          <Route
+            path="/quests"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <DailyQuests />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
 
-          <Route path="/admin" element={
-            <AdminRoute>
-              <PageTransition>
-                <AdminPanel />
-              </PageTransition>
-            </AdminRoute>
-          } />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <PageTransition>
+                  <UserProfile />
+                </PageTransition>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <PageTransition>
+                  <AdminPanel />
+                </PageTransition>
+              </AdminRoute>
+            }
+          />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

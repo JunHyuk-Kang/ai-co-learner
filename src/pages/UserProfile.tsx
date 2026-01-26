@@ -113,16 +113,17 @@ export const UserProfile: React.FC = () => {
 
       // Auto hide success message
       setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err: any) {
+    } catch (err) {
       logger.error('Password change error:', err);
 
-      if (err.name === 'NotAuthorizedException') {
+      const errName = err instanceof Error ? err.name : '';
+      if (errName === 'NotAuthorizedException') {
         setError('현재 비밀번호가 올바르지 않습니다.');
-      } else if (err.name === 'InvalidPasswordException') {
+      } else if (errName === 'InvalidPasswordException') {
         setError(
           '새 비밀번호가 요구사항을 충족하지 않습니다. 최소 8자, 대소문자, 숫자, 특수문자를 포함해야 합니다.'
         );
-      } else if (err.name === 'LimitExceededException') {
+      } else if (errName === 'LimitExceededException') {
         setError('비밀번호 변경 시도 횟수를 초과했습니다. 잠시 후 다시 시도해주세요.');
       } else {
         setError('비밀번호 변경 중 오류가 발생했습니다.');

@@ -19,7 +19,7 @@ export const StreamingIndicator: React.FC<StreamingIndicatorProps> = ({ agentNam
         transition={{
           repeat: Infinity,
           duration: 1.5,
-          ease: "easeInOut"
+          ease: 'easeInOut',
         }}
       >
         <div className="w-1.5 h-1.5 rounded-full bg-primary" style={{ animationDelay: '0ms' }} />

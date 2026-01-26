@@ -1,13 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChatService, UserService } from '../services/awsBackend';
-import {
-  ChatSession,
-  Message,
-  SubscriptionTier,
-  QuotaExceededError,
-  TrialExpiredError,
-} from '../types';
+import { ChatService } from '../services/awsBackend';
+import { ChatSession, SubscriptionTier, QuotaExceededError, TrialExpiredError } from '../types';
 import { ChatBubble } from '../components/chat/ChatBubble';
 import { StreamingIndicator } from '../components/chat/StreamingIndicator';
 import { Button } from '../components/ui/Button';

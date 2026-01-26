@@ -21,7 +21,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   });
 
   const response = await restOperation.response;
-  return await response.body.json() as T;
+  return (await response.body.json()) as T;
 }
 
 /**
@@ -43,7 +43,7 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
   });
 
   const response = await restOperation.response;
-  return await response.body.json() as T;
+  return (await response.body.json()) as T;
 }
 
 /**
@@ -65,7 +65,7 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
   });
 
   const response = await restOperation.response;
-  return await response.body.json() as T;
+  return (await response.body.json()) as T;
 }
 
 /**
@@ -86,5 +86,5 @@ export async function apiDelete<T>(path: string): Promise<T> {
   });
 
   const response = await restOperation.response;
-  return await response.body.json() as T;
+  return (await response.body.json()) as T;
 }
