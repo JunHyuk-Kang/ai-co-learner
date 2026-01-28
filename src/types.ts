@@ -102,6 +102,7 @@ export interface BotTemplate {
   systemPrompt: string;
   themeColor?: string; // e.g., 'blue', 'purple', 'green'
   baseType?: string; // e.g., 'questioning', 'reflective', 'supportive'
+  organizationId?: string; // 'GLOBAL' 또는 조직명 (e.g., '어정중학교')
   primaryCompetencies?: string[]; // 주요 육성 역량
   secondaryCompetencies?: string[]; // 부차적 육성 역량
   recommendedFor?: {

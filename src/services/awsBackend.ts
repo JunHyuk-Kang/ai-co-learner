@@ -235,9 +235,10 @@ export const ChatService = {
 };
 
 export const BotService = {
-  getTemplates: async (): Promise<BotTemplate[]> => {
+  getTemplates: async (userId?: string): Promise<BotTemplate[]> => {
     try {
-      const data = await apiGet<BotTemplate[]>('/bots/templates');
+      const path = userId ? `/bots/templates?userId=${userId}` : '/bots/templates';
+      const data = await apiGet<BotTemplate[]>(path);
       return data;
     } catch (error) {
       logger.error('Failed to get templates:', error);
@@ -527,14 +528,12 @@ export const AdminService = {
 
 export interface AssessmentOption {
   text: string;
-  score: number;
 }
 
 export interface AssessmentQuestion {
   id: string;
   question: string;
   options: AssessmentOption[];
-  competency: string;
 }
 
 export interface AssessmentResult {

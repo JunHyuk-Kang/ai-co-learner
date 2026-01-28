@@ -99,6 +99,10 @@ export const AdminPanel: React.FC = () => {
   const [groupNewTier, setGroupNewTier] = useState<string>('');
   const [isUpdatingGroupTier, setIsUpdatingGroupTier] = useState(false);
 
+  // Template organization filter & form state
+  const [templateOrgFilter, setTemplateOrgFilter] = useState<string>('ALL');
+  const [newTemplateOrgId, setNewTemplateOrgId] = useState<string>('GLOBAL');
+
   // Template Form State
   const [newName, setNewName] = useState('');
   const [newPrompt, setNewPrompt] = useState('');
@@ -123,6 +127,11 @@ export const AdminPanel: React.FC = () => {
       } else if (view === 'templates') {
         const templates = await BotService.getTemplates();
         setTemplates(templates);
+        // 조직 목록 로드 (필터 드롭다운용)
+        if (currentUser.role === Role.ADMIN) {
+          const orgData = await SubscriptionService.getOrganizations(currentUser.id);
+          if (orgData) setOrganizations(orgData.organizations);
+        }
       } else if (view === 'users' && currentUser.role === Role.ADMIN) {
         const users = await AdminService.getAllUsers(currentUser.id);
         // Convert userId to id for frontend compatibility
@@ -326,6 +335,7 @@ export const AdminPanel: React.FC = () => {
         systemPrompt: newPrompt,
         themeColor: newThemeColor,
         baseType: newBaseType,
+        organizationId: newTemplateOrgId,
         primaryCompetencies: newPrimaryCompetencies,
         secondaryCompetencies: newSecondaryCompetencies,
         recommendedFor: {
@@ -349,6 +359,7 @@ export const AdminPanel: React.FC = () => {
     setNewPrompt(template.systemPrompt);
     setNewThemeColor(template.themeColor || 'blue');
     setNewBaseType(template.baseType || 'coaching');
+    setNewTemplateOrgId(template.organizationId || 'GLOBAL');
     setNewPrimaryCompetencies(template.primaryCompetencies || []);
     setNewSecondaryCompetencies(template.secondaryCompetencies || []);
     setNewRecommendedFor(template.recommendedFor?.competencyBelow || {});
@@ -367,6 +378,7 @@ export const AdminPanel: React.FC = () => {
         systemPrompt: newPrompt,
         themeColor: newThemeColor,
         baseType: newBaseType,
+        organizationId: newTemplateOrgId,
         primaryCompetencies: newPrimaryCompetencies,
         secondaryCompetencies: newSecondaryCompetencies,
         recommendedFor: {
@@ -402,6 +414,7 @@ export const AdminPanel: React.FC = () => {
     setNewDesc('');
     setNewThemeColor('blue');
     setNewBaseType('coaching');
+    setNewTemplateOrgId('GLOBAL');
     setNewPrimaryCompetencies([]);
     setNewSecondaryCompetencies([]);
     setNewRecommendedFor({});
@@ -798,7 +811,23 @@ export const AdminPanel: React.FC = () => {
       {/* --- TEMPLATES VIEW --- */}
       {view === 'templates' && (
         <>
-          <div className="mb-6 flex justify-end">
+          <div className="mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-gray-400">조직 필터:</label>
+              <select
+                className="bg-[#121212] border border-border rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-primary"
+                value={templateOrgFilter}
+                onChange={e => setTemplateOrgFilter(e.target.value)}
+              >
+                <option value="ALL">전체</option>
+                <option value="GLOBAL">공통 (GLOBAL)</option>
+                {organizations.map(org => (
+                  <option key={org.name} value={org.name}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Button onClick={() => setIsCreating(true)}>
               <Plus size={16} className="mr-2" />
               템플릿 생성
@@ -857,6 +886,25 @@ export const AdminPanel: React.FC = () => {
                       <option value="questioning">Questioning</option>
                       <option value="reflective">Reflective</option>
                       <option value="supportive">Supportive</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">
+                      소속 조직
+                    </label>
+                    <select
+                      className="w-full bg-[#121212] border border-border rounded-lg p-2 text-sm text-gray-200 focus:outline-none focus:border-primary"
+                      value={newTemplateOrgId}
+                      onChange={e => setNewTemplateOrgId(e.target.value)}
+                    >
+                      <option value="GLOBAL">공통 (모든 사용자)</option>
+                      {organizations.map(org => (
+                        <option key={org.name} value={org.name}>
+                          {org.name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -976,40 +1024,61 @@ export const AdminPanel: React.FC = () => {
           )}
 
           <div className="grid gap-4">
-            {templates.map(tmpl => (
-              <Card key={tmpl.id} className="group hover:border-gray-600 transition-colors">
-                <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                  <div className="flex items-start gap-4 flex-1 min-w-0">
-                    <div className="p-3 bg-surface rounded-lg border border-border text-gray-400">
-                      <Bot size={24} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-bold text-lg text-white truncate">{tmpl.name}</h3>
-                      <p className="text-sm text-gray-400 mb-3 line-clamp-2">{tmpl.description}</p>
-                      <div className="bg-[#121212] p-3 rounded-md border border-border overflow-hidden">
-                        <p className="text-xs font-mono text-gray-500 line-clamp-2 break-all">
-                          {tmpl.systemPrompt}
+            {templates
+              .filter(
+                tmpl =>
+                  templateOrgFilter === 'ALL' ||
+                  (tmpl.organizationId || 'GLOBAL') === templateOrgFilter
+              )
+              .map(tmpl => (
+                <Card key={tmpl.id} className="group hover:border-gray-600 transition-colors">
+                  <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                    <div className="flex items-start gap-4 flex-1 min-w-0">
+                      <div className="p-3 bg-surface rounded-lg border border-border text-gray-400">
+                        <Bot size={24} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-bold text-lg text-white truncate">{tmpl.name}</h3>
+                          <span
+                            className={`text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap ${
+                              (tmpl.organizationId || 'GLOBAL') === 'GLOBAL'
+                                ? 'bg-blue-900/30 text-blue-400'
+                                : 'bg-green-900/30 text-green-400'
+                            }`}
+                          >
+                            {(tmpl.organizationId || 'GLOBAL') === 'GLOBAL'
+                              ? '공통'
+                              : tmpl.organizationId}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-400 mb-3 line-clamp-2">
+                          {tmpl.description}
                         </p>
+                        <div className="bg-[#121212] p-3 rounded-md border border-border overflow-hidden">
+                          <p className="text-xs font-mono text-gray-500 line-clamp-2 break-all">
+                            {tmpl.systemPrompt}
+                          </p>
+                        </div>
                       </div>
                     </div>
+                    <div className="flex gap-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(tmpl)}>
+                        <Edit size={16} className="mr-1" />
+                        수정
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
+                        onClick={() => handleDelete(tmpl.id)}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-2 md:opacity-0 md:group-hover:opacity-100 transition-opacity shrink-0">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(tmpl)}>
-                      <Edit size={16} className="mr-1" />
-                      수정
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-400 hover:bg-red-900/20 hover:text-red-300"
-                      onClick={() => handleDelete(tmpl.id)}
-                    >
-                      <Trash2 size={16} />
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              ))}
           </div>
         </>
       )}

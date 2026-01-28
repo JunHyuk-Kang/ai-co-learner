@@ -1,8 +1,8 @@
-// ==================== 구독 관리 함수 ====================
-// 이 파일의 내용을 index.mjs 끝에 추가해주세요
+import { GetCommand, UpdateCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { dynamoClient } from "../lib/clients.mjs";
+import { TABLES } from "../lib/config.mjs";
 
-// 사용자 구독 티어 변경
-async function updateSubscriptionTier(event, headers) {
+export async function updateSubscriptionTier(event, headers) {
   try {
     const body = JSON.parse(event.body || '{}');
     const { adminUserId, targetUserId, newTier } = body;
@@ -11,7 +11,7 @@ async function updateSubscriptionTier(event, headers) {
 
     // 관리자 권한 확인
     const adminUser = await dynamoClient.send(new GetCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: adminUserId }
     }));
 
@@ -35,7 +35,7 @@ async function updateSubscriptionTier(event, headers) {
 
     // 대상 사용자 조회
     const targetUser = await dynamoClient.send(new GetCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: targetUserId }
     }));
 
@@ -66,18 +66,17 @@ async function updateSubscriptionTier(event, headers) {
     // 구독 티어 업데이트
     const updateExpression = [
       'subscriptionTier = :tier',
-      'messageQuota.monthlyLimit = :limit',
-      'messageQuota.currentMonthUsage = :zero',
-      'messageQuota.lastResetDate = :today',
-      'messageQuota.nextResetDate = :nextMonth'
+      'messageQuota = :quota'
     ];
 
     const expressionValues = {
       ':tier': newTier,
-      ':limit': tierLimits[newTier],
-      ':zero': 0,
-      ':today': today,
-      ':nextMonth': firstDayNextMonth
+      ':quota': {
+        monthlyLimit: tierLimits[newTier],
+        currentMonthUsage: 0,
+        lastResetDate: today,
+        nextResetDate: firstDayNextMonth
+      }
     };
 
     // TRIAL 티어인 경우 체험 기간 설정
@@ -108,7 +107,7 @@ async function updateSubscriptionTier(event, headers) {
     };
 
     await dynamoClient.send(new UpdateCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: targetUserId },
       UpdateExpression: `SET ${updateExpression.join(', ')}`,
       ExpressionAttributeValues: expressionValues
@@ -140,8 +139,7 @@ async function updateSubscriptionTier(event, headers) {
   }
 }
 
-// 사용자 메시지 할당량 리셋
-async function resetUserQuota(event, headers) {
+export async function resetUserQuota(event, headers) {
   try {
     const body = JSON.parse(event.body || '{}');
     const { adminUserId, targetUserId } = body;
@@ -150,7 +148,7 @@ async function resetUserQuota(event, headers) {
 
     // 관리자 권한 확인
     const adminUser = await dynamoClient.send(new GetCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: adminUserId }
     }));
 
@@ -168,18 +166,33 @@ async function resetUserQuota(event, headers) {
     const firstDayNextMonth = new Date(nextMonth.getFullYear(), nextMonth.getMonth(), 1)
       .toISOString().split('T')[0];
 
+    // 대상 사용자 조회
+    const targetUser = await dynamoClient.send(new GetCommand({
+      TableName: TABLES.USERS,
+      Key: { userId: targetUserId }
+    }));
+
+    if (!targetUser.Item) {
+      return {
+        statusCode: 404,
+        headers,
+        body: JSON.stringify({ error: 'NOT_FOUND', message: 'User not found' })
+      };
+    }
+
+    const existingQuota = targetUser.Item.messageQuota || {};
+
     await dynamoClient.send(new UpdateCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: targetUserId },
-      UpdateExpression: `
-        SET messageQuota.currentMonthUsage = :zero,
-            messageQuota.lastResetDate = :today,
-            messageQuota.nextResetDate = :nextMonth
-      `,
+      UpdateExpression: 'SET messageQuota = :quota',
       ExpressionAttributeValues: {
-        ':zero': 0,
-        ':today': today,
-        ':nextMonth': firstDayNextMonth
+        ':quota': {
+          monthlyLimit: existingQuota.monthlyLimit || -1,
+          currentMonthUsage: 0,
+          lastResetDate: today,
+          nextResetDate: firstDayNextMonth
+        }
       }
     }));
 
@@ -205,8 +218,7 @@ async function resetUserQuota(event, headers) {
   }
 }
 
-// 체험 기간 연장
-async function extendTrialPeriod(event, headers) {
+export async function extendTrialPeriod(event, headers) {
   try {
     const body = JSON.parse(event.body || '{}');
     const { adminUserId, targetUserId, additionalDays } = body;
@@ -215,7 +227,7 @@ async function extendTrialPeriod(event, headers) {
 
     // 관리자 권한 확인
     const adminUser = await dynamoClient.send(new GetCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: adminUserId }
     }));
 
@@ -229,7 +241,7 @@ async function extendTrialPeriod(event, headers) {
 
     // 대상 사용자 조회
     const targetUser = await dynamoClient.send(new GetCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: targetUserId }
     }));
 
@@ -255,7 +267,8 @@ async function extendTrialPeriod(event, headers) {
     }
 
     // 현재 체험 종료일에서 연장
-    const currentEndDate = targetUser.Item.trialPeriod?.endDate || new Date().toISOString();
+    const currentTrialPeriod = targetUser.Item.trialPeriod || { startDate: new Date().toISOString() };
+    const currentEndDate = currentTrialPeriod.endDate || new Date().toISOString();
     const newEndDate = new Date(currentEndDate);
     newEndDate.setDate(newEndDate.getDate() + (additionalDays || 30));
 
@@ -263,17 +276,16 @@ async function extendTrialPeriod(event, headers) {
     const daysRemaining = Math.ceil((newEndDate - now) / (1000 * 60 * 60 * 24));
 
     await dynamoClient.send(new UpdateCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: targetUserId },
-      UpdateExpression: `
-        SET trialPeriod.endDate = :endDate,
-            trialPeriod.isExpired = :isExpired,
-            trialPeriod.daysRemaining = :daysRemaining
-      `,
+      UpdateExpression: 'SET trialPeriod = :trialPeriod',
       ExpressionAttributeValues: {
-        ':endDate': newEndDate.toISOString(),
-        ':isExpired': false,
-        ':daysRemaining': daysRemaining
+        ':trialPeriod': {
+          startDate: currentTrialPeriod.startDate,
+          endDate: newEndDate.toISOString(),
+          isExpired: false,
+          daysRemaining: daysRemaining
+        }
       }
     }));
 
@@ -300,8 +312,7 @@ async function extendTrialPeriod(event, headers) {
   }
 }
 
-// 구독 통계 조회
-async function getSubscriptionStats(event, headers) {
+export async function getSubscriptionStats(event, headers) {
   try {
     const adminUserId = event.queryStringParameters?.adminUserId;
 
@@ -309,7 +320,7 @@ async function getSubscriptionStats(event, headers) {
 
     // 관리자 권한 확인
     const adminUser = await dynamoClient.send(new GetCommand({
-      TableName: USERS_TABLE,
+      TableName: TABLES.USERS,
       Key: { userId: adminUserId }
     }));
 
@@ -323,7 +334,7 @@ async function getSubscriptionStats(event, headers) {
 
     // 모든 사용자 조회
     const usersResponse = await dynamoClient.send(new ScanCommand({
-      TableName: USERS_TABLE
+      TableName: TABLES.USERS
     }));
 
     const users = usersResponse.Items || [];

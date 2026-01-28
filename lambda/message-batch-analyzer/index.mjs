@@ -1,7 +1,7 @@
 // Gemini imports
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, ScanCommand, BatchWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, ScanCommand, BatchWriteCommand, UpdateCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 
 // Google Gemini 클라이언트
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -15,7 +15,8 @@ const ANALYTICS_TABLE = process.env.ANALYTICS_TABLE || "ai-co-learner-learning-a
 const MODEL_ID = "gemini-2.5-flash";
 
 const BATCH_SIZE = 30; // 한 번에 분석할 메시지 수
-const LOOKBACK_MINUTES = 43200; // 최근 30일간 메시지 조회 (임시: 디버깅용)
+const LOOKBACK_MINUTES = 10; // 최근 10분간 메시지 조회 (5분 스케줄 + 여유분)
+const USAGE_TRACKING_TABLE = process.env.USAGE_TRACKING_TABLE || "ai-co-learner-usage-tracking";
 
 // Exponential Backoff 재시도 설정
 const RETRY_CONFIG = {
@@ -140,6 +141,9 @@ async function analyzeBatch(messages) {
 
   console.log(`📤 Sending batch to Gemini (${messages.length} messages)...`);
 
+  let inputTokens = 0;
+  let outputTokens = 0;
+
   const analysisResults = await retryWithBackoff(async () => {
     const model = genAI.getGenerativeModel({
       model: MODEL_ID,
@@ -153,6 +157,13 @@ async function analyzeBatch(messages) {
     const response = await result.response;
     const analysisText = response.text();
 
+    // 토큰 사용량 수집
+    if (response.usageMetadata) {
+      inputTokens = response.usageMetadata.promptTokenCount || 0;
+      outputTokens = response.usageMetadata.candidatesTokenCount || 0;
+      console.log(`📊 Token usage: ${inputTokens} input, ${outputTokens} output`);
+    }
+
     console.log(`📥 Received analysis from Gemini`);
 
     // JSON 배열 추출
@@ -164,6 +175,11 @@ async function analyzeBatch(messages) {
 
     return JSON.parse(jsonMatch[0]);
   });
+
+  // 사용량 추적
+  if (inputTokens > 0 || outputTokens > 0) {
+    await trackUsage(inputTokens, outputTokens, messages.length);
+  }
 
   // 메시지 정보와 분석 결과 매핑
   return analysisResults.map((result, index) => ({
@@ -235,7 +251,7 @@ async function saveAnalysisResults(results) {
   const chunks = chunkArray(results, 25);
 
   for (const chunk of chunks) {
-    // learning-analytics 테이블에 저장
+    // learning-analytics 테이블에 저장 (BatchWrite 사용)
     const analyticsRequests = chunk.map(result => ({
       PutRequest: {
         Item: {
@@ -260,23 +276,29 @@ async function saveAnalysisResults(results) {
       }
     }));
 
-    // chat-sessions 테이블에 analyzed 플래그 설정
-    const sessionRequests = chunk.map(result => ({
-      PutRequest: {
-        Item: {
-          ...result,
-          analyzed: true, // 분석 완료 표시
-          analysisTimestamp: Date.now()
-        }
+    await dynamoClient.send(new BatchWriteCommand({
+      RequestItems: {
+        [ANALYTICS_TABLE]: analyticsRequests
       }
     }));
 
-    await dynamoClient.send(new BatchWriteCommand({
-      RequestItems: {
-        [ANALYTICS_TABLE]: analyticsRequests,
-        [SESSIONS_TABLE]: sessionRequests
-      }
-    }));
+    // chat-sessions 테이블에 analyzed 플래그 설정 (UpdateCommand 사용)
+    // BatchWrite의 PutRequest는 전체 아이템을 교체하므로, 기존 데이터가 손실될 수 있음
+    // UpdateCommand를 사용하여 analyzed 플래그만 추가
+    for (const result of chunk) {
+      await dynamoClient.send(new UpdateCommand({
+        TableName: SESSIONS_TABLE,
+        Key: {
+          sessionId: result.sessionId,
+          timestamp: result.timestamp
+        },
+        UpdateExpression: "SET analyzed = :analyzed, analysisTimestamp = :analysisTimestamp",
+        ExpressionAttributeValues: {
+          ":analyzed": true,
+          ":analysisTimestamp": Date.now()
+        }
+      }));
+    }
   }
 
   console.log(`💾 Saved ${results.length} analysis results to DynamoDB`);
@@ -289,4 +311,46 @@ function chunkArray(array, size) {
     chunks.push(array.slice(i, i + size));
   }
   return chunks;
+}
+
+// 사용량 추적 함수
+async function trackUsage(inputTokens, outputTokens, batchSize) {
+  // Gemini 2.5 Flash 가격 (2026년 1월 기준)
+  const PRICING = {
+    inputPer1M: 0.30,  // $0.30 per 1M input tokens
+    outputPer1M: 2.50  // $2.50 per 1M output tokens
+  };
+
+  const estimatedCost =
+    (inputTokens / 1_000_000) * PRICING.inputPer1M +
+    (outputTokens / 1_000_000) * PRICING.outputPer1M;
+
+  const timestamp = Date.now();
+  const date = new Date().toISOString().split('T')[0];
+
+  try {
+    await dynamoClient.send(new PutCommand({
+      TableName: USAGE_TRACKING_TABLE,
+      Item: {
+        userId: "SYSTEM_BATCH_ANALYZER",  // 시스템 사용량으로 기록
+        timestamp,
+        messageId: `batch-analyzer-${timestamp}`,
+        sessionId: `batch-${date}`,
+        date,
+        service: "gemini",
+        modelId: MODEL_ID,
+        operation: "batch-analysis",
+        inputTokens,
+        outputTokens,
+        totalTokens: inputTokens + outputTokens,
+        estimatedCost,
+        batchSize,  // 분석한 메시지 수
+        createdAt: new Date().toISOString()
+      }
+    }));
+    console.log(`📊 Usage tracked: ${inputTokens} input + ${outputTokens} output tokens, cost: $${estimatedCost.toFixed(4)}`);
+  } catch (error) {
+    console.error("⚠️ Failed to track usage:", error.message);
+    // 사용량 추적 실패해도 메인 로직은 계속 진행
+  }
 }

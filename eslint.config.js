@@ -57,12 +57,12 @@ export default [
       // Custom rules
       'no-console': 'off', // Allow console in logger.ts
       '@typescript-eslint/no-unused-vars': 'warn', // Downgrade to warning
-      '@typescript-eslint/no-explicit-any': 'off', // Too many false positives
+      '@typescript-eslint/no-explicit-any': 'warn', // Warn on any usage
       'no-undef': 'off', // TypeScript handles this
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
       'react/no-unescaped-entities': 'off',
-      'react-hooks/exhaustive-deps': 'off', // Too strict for current codebase
+      'react-hooks/exhaustive-deps': 'warn', // Warn on missing deps
       'react-hooks/immutability': 'off'
     },
     settings: {

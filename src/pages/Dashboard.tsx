@@ -106,7 +106,12 @@ export const Dashboard: React.FC = () => {
   const [totalAchievements, setTotalAchievements] = useState(0);
 
   useEffect(() => {
-    BotService.getTemplates().then(setTemplates);
+    // 사용자 조직 기반 템플릿 필터링 (userId 전달 시 GLOBAL + 소속 조직 템플릿만 반환)
+    if (user) {
+      BotService.getTemplates(user.id).then(setTemplates);
+    } else {
+      BotService.getTemplates().then(setTemplates);
+    }
 
     // 역량 데이터가 있는지 확인
     if (user) {
