@@ -15,14 +15,56 @@ export async function getSession(event, headers) {
     ScanIndexForward: true // 오래된 순서
   }));
 
-  const messages = (response.Items || []).flatMap((item, index) => {
+  // 템플릿 openingMessage 조회
+  let openingText = null;
+  try {
+    const userBotsResponse = await dynamoClient.send(new ScanCommand({
+      TableName: TABLES.USER_BOTS,
+      FilterExpression: "botId = :botId",
+      ExpressionAttributeValues: { ":botId": sessionId }
+    }));
+    const userBot = userBotsResponse.Items?.[0];
+    if (userBot?.templateId) {
+      const templateResponse = await dynamoClient.send(new GetCommand({
+        TableName: TABLES.TEMPLATES,
+        Key: { templateId: userBot.templateId }
+      }));
+      if (templateResponse.Item?.openingMessage) {
+        openingText = templateResponse.Item.openingMessage;
+      }
+    }
+  } catch (_e) {
+    // openingText remains null — fallback below
+  }
+
+  const fallbackText = '안녕하세요! 무엇을 도와드릴까요?';
+
+  // 새 세션 (대화 기록 없음): openingMessage만 반환
+  if (!response.Items || response.Items.length === 0) {
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        id: sessionId,
+        botId: sessionId,
+        userId: 'unknown',
+        messages: [{
+          id: `${sessionId}-init`,
+          sender: 'ai',
+          text: openingText || fallbackText,
+          timestamp: Date.now()
+        }]
+      })
+    };
+  }
+
+  const messages = response.Items.flatMap((item, index) => {
     const msgs = [];
     if (index === 0) {
-      // 첫 메시지는 AI 인사
       msgs.push({
         id: `${sessionId}-init`,
         sender: 'ai',
-        text: '안녕하세요! 무엇을 도와드릴까요?',
+        text: openingText || fallbackText,
         timestamp: item.timestamp - 1000
       });
     }
@@ -47,7 +89,7 @@ export async function getSession(event, headers) {
     body: JSON.stringify({
       id: sessionId,
       botId: sessionId,
-      userId: response.Items?.[0]?.userId || 'unknown',
+      userId: response.Items[0]?.userId || 'unknown',
       messages
     })
   };
